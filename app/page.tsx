@@ -526,9 +526,10 @@ function groupAssessmentsByIdentifier(assessments: Assessment[]): AssessmentGrou
   const groups: Record<string, AssessmentGroup> = {};
 
   for (const a of assessments) {
-    // If group_identifier exists, use it. Otherwise use assessment_id.
-    // Also consider academic_year? Assuming same year.
-    const key = a.group_identifier || `single_${a.assessment_id}`;
+    // If group_identifier exists, use it.
+    // Otherwise, generate a composite key from class and title to group identical assessments
+    // that might just differ by language.
+    const key = a.group_identifier || `${a.class_grade}_${a.title.trim().toLowerCase()}`;
 
     if (!groups[key]) {
       groups[key] = {
@@ -540,8 +541,6 @@ function groupAssessmentsByIdentifier(assessments: Assessment[]): AssessmentGrou
       };
     }
 
-    // If title differs significantly, maybe picking the first one is fine.
-    // Usually grouped assessments have same title.
     groups[key].assessments.push(a);
   }
 
@@ -583,7 +582,20 @@ function AssessmentGroupCard({
           <span className="card-class">Class {group.class_grade}</span>
           {isCached && <span className="card-cached">💾</span>}
           {assessment.language && assessment.language !== 'English' && (
-            <span className="card-lang-badge">{assessment.language}</span>
+            <span
+              className="card-lang-badge"
+              style={{
+                fontSize: '10px',
+                background: 'var(--color-secondary)',
+                padding: '2px 6px',
+                borderRadius: '4px',
+                marginLeft: '6px',
+                color: 'var(--color-text-secondary)',
+                verticalAlign: 'middle'
+              }}
+            >
+              {assessment.language}
+            </span>
           )}
         </div>
         <h3 className="card-title">{group.title}</h3>
@@ -602,7 +614,18 @@ function AssessmentGroupCard({
     <div className={`assessment-card ${showLanguages ? 'expanded' : ''}`}>
       <div className="card-header">
         <span className="card-class">Class {group.class_grade}</span>
-        <span className="card-lang-count">{group.assessments.length} Languages</span>
+        <span
+          className="card-lang-count"
+          style={{
+            fontSize: '11px',
+            background: 'var(--color-secondary)',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            color: 'var(--color-text-secondary)'
+          }}
+        >
+          {group.assessments.length} Languages
+        </span>
       </div>
       <h3 className="card-title">{group.title}</h3>
       {group.description && !showLanguages && (
@@ -610,9 +633,35 @@ function AssessmentGroupCard({
       )}
 
       {showLanguages ? (
-        <div className="lang-selection">
-          <p className="lang-label">Select Language:</p>
-          <div className="lang-grid">
+        <div
+          className="lang-selection"
+          style={{
+            marginTop: '16px',
+            paddingTop: '16px',
+            borderTop: '1px solid var(--color-border)',
+            animation: 'fadeIn 0.2s ease'
+          }}
+        >
+          <p
+            className="lang-label"
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: 'var(--color-text-secondary)',
+              margin: '0 0 12px'
+            }}
+          >
+            Select Language:
+          </p>
+          <div
+            className="lang-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+              gap: '8px',
+              marginBottom: '16px'
+            }}
+          >
             {sortedAssessments.map(a => {
               const isCached = cachedFormIds.has(a.assessment_id);
               const isDisabled = isOffline && !isCached;
@@ -621,6 +670,22 @@ function AssessmentGroupCard({
                   key={a.assessment_id}
                   href={isDisabled ? '#' : `/forms/${a.assessment_id}`}
                   className={`lang-btn ${isDisabled ? 'disabled' : ''}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    padding: '8px 12px',
+                    background: isDisabled ? 'var(--color-bg)' : 'var(--color-secondary)',
+                    border: '1px solid transparent',
+                    borderRadius: 'var(--radius)',
+                    textDecoration: 'none',
+                    fontSize: '13px',
+                    color: 'var(--color-text)',
+                    opacity: isDisabled ? 0.5 : 1,
+                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s'
+                  }}
                 >
                   <span>{a.language || 'English'}</span>
                   {isCached && <span className="mini-disk">💾</span>}
@@ -634,6 +699,15 @@ function AssessmentGroupCard({
               e.preventDefault();
               e.stopPropagation();
               setShowLanguages(false);
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '12px',
+              color: 'var(--color-text-secondary)',
+              cursor: 'pointer',
+              padding: 0,
+              textDecoration: 'underline'
             }}
           >
             Cancel

@@ -81,7 +81,7 @@ export async function getPublishedAssessmentsByClass(classGrade: number) {
   return sql`
     SELECT assessment_id, title, description, class_grade, language, group_identifier, academic_year
     FROM assessments
-    WHERE status = 'published' AND class_grade = ${classGrade}
+    WHERE status = 'published' AND is_active = true AND class_grade = ${classGrade}
     ORDER BY title
   `;
 }
@@ -93,7 +93,7 @@ export async function getAllPublishedAssessments() {
   return sql`
     SELECT assessment_id, title, description, class_grade, language, group_identifier, academic_year
     FROM assessments
-    WHERE status = 'published'
+    WHERE status = 'published' AND is_active = true
     ORDER BY class_grade, title
   `;
 }
