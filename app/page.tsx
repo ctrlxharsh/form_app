@@ -16,6 +16,7 @@ import {
   getAllCachedForms,
   getLastSchoolsSyncTime,
   getPendingSubmissions,
+  getPendingGradingCount,
   type CachedAssessment,
   type CachedForm,
   type OfflineSubmission
@@ -29,6 +30,7 @@ import {
   onSyncStatusChange,
   type SyncStatus
 } from '@/lib/sync';
+import { getTeacherSession, logoutTeacher, type TeacherSession } from '@/lib/auth';
 
 interface Assessment {
   assessment_id: number;
@@ -56,6 +58,8 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [selectedClass, setSelectedClass] = useState<number | 'all'>('all');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [teacherSession, setTeacherSession] = useState<TeacherSession | null>(null);
+  const [pendingGradingCount, setPendingGradingCount] = useState(0);
 
   // Load cached forms
   const loadCachedForms = useCallback(async () => {
@@ -87,9 +91,20 @@ export default function HomePage() {
     // If online, fetch fresh data from API
     if (isOnline()) {
       try {
-        const url = selectedClass === 'all'
-          ? '/api/assessments'
-          : `/api/assessments?class=${selectedClass}`;
+        // Build URL with RBAC params if teacher is logged in
+        const params = new URLSearchParams();
+        if (selectedClass !== 'all') {
+          params.set('classGrade', String(selectedClass));
+        }
+
+        // Get current session for RBAC filtering
+        const session = await getTeacherSession();
+        if (session) {
+          params.set('userId', String(session.userId));
+          params.set('role', session.role);
+        }
+
+        const url = `/api/assessments${params.toString() ? '?' + params.toString() : ''}`;
         const response = await fetch(url);
 
         if (response.ok) {
@@ -125,17 +140,24 @@ export default function HomePage() {
     async function loadData() {
       setLoading(true);
 
-      const [cached, lastSync] = await Promise.all([
+      const [cached, lastSync, session] = await Promise.all([
         hasSchoolsCache(),
-        getLastSchoolsSyncTime()
+        getLastSchoolsSyncTime(),
+        getTeacherSession()
       ]);
 
       setHasCache(cached);
       setLastSchoolsSync(lastSync);
+      setTeacherSession(session);
 
       await loadCachedForms();
       await loadAssessments();
       await loadPendingSubmissions();
+
+      if (session) {
+        const gradingCount = await getPendingGradingCount(session.userId);
+        setPendingGradingCount(gradingCount);
+      }
 
       if (isOnline()) {
         triggerSync().catch(console.error);
@@ -325,6 +347,36 @@ export default function HomePage() {
             </div>
           </div>
         )}
+
+        {/* Teacher Portal */}
+        <div className="sidebar-section teacher-section">
+          <h3>👩‍🏫 Teacher Portal</h3>
+          {teacherSession ? (
+            <>
+              <div className="teacher-info">
+                <span className="teacher-name">{teacherSession.fullName}</span>
+                <span className="teacher-role">{teacherSession.role}</span>
+              </div>
+              <Link href="/grading" className="teacher-link">
+                📝 Grading Dashboard
+                {pendingGradingCount > 0 && <span className="grading-badge">{pendingGradingCount}</span>}
+              </Link>
+              <button
+                onClick={async () => {
+                  await logoutTeacher();
+                  setTeacherSession(null);
+                }}
+                className="logout-btn"
+              >
+                🚪 Logout
+              </button>
+            </>
+          ) : (
+            <Link href="/login" className="teacher-login-link">
+              🔐 Teacher Login
+            </Link>
+          )}
+        </div>
       </aside>
 
       {/* Mobile Header */}

@@ -45,7 +45,7 @@ export function StudentDetailsForm({ initialClassGrade = 4, onSubmit }: StudentD
     const [geolocation, setGeolocation] = useState<string | null>(null);
     const [gender, setGender] = useState<'Male' | 'Female'>('Male');
     const [classGrade, setClassGrade] = useState(initialClassGrade);
-    const [section, setSection] = useState('A');
+    const [section, setSection] = useState('N/A');
 
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<string[]>([]);
@@ -74,7 +74,19 @@ export function StudentDetailsForm({ initialClassGrade = 4, onSubmit }: StudentD
 
             try {
                 if (online) {
-                    const response = await fetch(`/api/schools?intervention=${intervention}`);
+                    // Get teacher session for RBAC filtering
+                    const { db } = await import('@/lib/db');
+                    const session = await db.table('teacherSession').get(1);
+
+                    // Build URL with RBAC params
+                    const params = new URLSearchParams();
+                    params.set('intervention', intervention);
+                    if (session) {
+                        params.set('userId', String(session.userId));
+                        params.set('role', session.role);
+                    }
+
+                    const response = await fetch(`/api/schools?${params.toString()}`);
                     if (response.ok) {
                         const data = await response.json();
                         setSchools(data);
@@ -171,7 +183,7 @@ export function StudentDetailsForm({ initialClassGrade = 4, onSubmit }: StudentD
     }, []);
 
     const classOptions = [4, 5, 6, 7, 8, 9, 10];
-    const sectionOptions = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+    const sectionOptions = ['N/A', 'A', 'B', 'C', 'D', 'E', 'F', 'G'];
 
     return (
         <form onSubmit={handleSubmit} className="student-form">

@@ -9,6 +9,7 @@
 
 import React from 'react';
 import type { FormQuestion, QuestionOption } from '@/lib/db';
+import { OfflineImage } from './OfflineImage';
 
 interface QuestionInputProps {
     question: FormQuestion;
@@ -45,7 +46,7 @@ export function QuestionInput({ question, value, onChange, questionNumber }: Que
                 {/* Question Image */}
                 {question.question_image_url && (
                     <div className="question-image-container">
-                        <img
+                        <OfflineImage
                             src={question.question_image_url}
                             alt="Question"
                             className="question-img"
@@ -195,7 +196,7 @@ function MCQInput({
                             <span className="option-letter">{String.fromCharCode(65 + idx)}</span>
                         </div>
                         {opt.option_image_url && (
-                            <img src={opt.option_image_url} alt={opt.option_text} className="option-image" />
+                            <OfflineImage src={opt.option_image_url} alt={opt.option_text} className="option-image" />
                         )}
                         {opt.option_text && (
                             <span className="option-text">{opt.option_text}</span>
@@ -247,7 +248,7 @@ function MultipleSelectInput({
                             <span className="option-letter">{String.fromCharCode(65 + idx)}</span>
                         </div>
                         {opt.option_image_url && (
-                            <img src={opt.option_image_url} alt={opt.option_text} className="option-image" />
+                            <OfflineImage src={opt.option_image_url} alt={opt.option_text} className="option-image" />
                         )}
                         {opt.option_text && (
                             <span className="option-text">{opt.option_text}</span>
@@ -420,7 +421,7 @@ function RankingInput({
                             <div className="ranking-content">
                                 <span className="ranking-text">{opt.option_text}</span>
                                 {opt.option_image_url && (
-                                    <img src={opt.option_image_url} alt={opt.option_text} className="ranking-image" />
+                                    <OfflineImage src={opt.option_image_url} alt={opt.option_text} className="ranking-image" />
                                 )}
                             </div>
                             <select
@@ -450,8 +451,14 @@ function ImageUploadInput({
     value?: File;
     onChange: (file: File | undefined) => void;
 }) {
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+        if (!file) {
+            onChange(undefined);
+            return;
+        }
+
+        // Use file directly without compression as requested
         onChange(file);
     };
 
@@ -465,13 +472,17 @@ function ImageUploadInput({
                     className="file-input"
                     id="file-upload"
                 />
-                <label htmlFor="file-upload" className="file-upload-label">
+                <label
+                    htmlFor="file-upload"
+                    className="file-upload-label"
+                >
                     📷 Choose Image
                 </label>
             </div>
             {value && (
                 <div className="file-preview">
                     <span className="file-name">✓ {value.name}</span>
+                    <span className="file-size">({(value.size / 1024).toFixed(0)} KB)</span>
                 </div>
             )}
         </div>

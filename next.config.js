@@ -4,6 +4,8 @@
 const nextConfig = {
     // Enable React strict mode
     reactStrictMode: true,
+    // Use environment variable for basePath, or default to empty string (root)
+    basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
 
     // Disable image optimization for offline support
     images: {

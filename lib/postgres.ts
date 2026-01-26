@@ -22,7 +22,7 @@ export { sql };
 export async function getFullAssessment(assessmentId: number) {
   // Get assessment base info
   const assessments = await sql`
-    SELECT assessment_id, title, description, class_grade, status, language, group_identifier, academic_year
+    SELECT assessment_id, title, description, class_grade, status, language, group_identifier, academic_year, total_marks
     FROM assessments
     WHERE assessment_id = ${assessmentId}
   `;
@@ -39,13 +39,13 @@ export async function getFullAssessment(assessmentId: number) {
     FROM assessment_sections
     WHERE assessment_id = ${assessmentId}
     ORDER BY order_index
-  `;
+    `;
 
   // For each section, get questions and options
   for (const section of sections) {
     const questions = await sql`
       SELECT question_id, question_type, question_text, question_image_url,
-             marks, is_required, order_index, correct_answer, min_value, max_value, parameter_mapping
+    marks, is_required, order_index, correct_answer, min_value, max_value, parameter_mapping
       FROM questions
       WHERE section_id = ${section.section_id}
       ORDER BY order_index
@@ -59,7 +59,7 @@ export async function getFullAssessment(assessmentId: number) {
           FROM question_options
           WHERE question_id = ${question.question_id}
           ORDER BY order_index
-        `;
+    `;
         question.options = options;
       } else {
         question.options = [];
@@ -83,7 +83,7 @@ export async function getPublishedAssessmentsByClass(classGrade: number) {
     FROM assessments
     WHERE status = 'published' AND is_active = true AND class_grade = ${classGrade}
     ORDER BY title
-  `;
+    `;
 }
 
 /**
@@ -95,7 +95,7 @@ export async function getAllPublishedAssessments() {
     FROM assessments
     WHERE status = 'published' AND is_active = true
     ORDER BY class_grade, title
-  `;
+    `;
 }
 
 // ============ SCHOOL QUERIES ============
@@ -108,10 +108,10 @@ export async function getAllPublishedAssessments() {
 export async function getAllSchools() {
   return sql`
     SELECT school_id, school_name, udise_code, local_education_admin,
-           state, district, intervention
+    state, district, intervention
     FROM schools
     ORDER BY school_name
-  `;
+    `;
 }
 
 /**
@@ -121,11 +121,11 @@ export async function getAllSchools() {
 export async function getSchoolsByIntervention(intervention: string) {
   return sql`
     SELECT school_id, school_name, udise_code, local_education_admin,
-           state, district, intervention
+    state, district, intervention
     FROM schools
     WHERE intervention = ${intervention}
     ORDER BY school_name
-  `;
+    `;
 }
 
 /**
@@ -156,15 +156,71 @@ export async function createSubmission(
   section: string,
   selectedLanguage: string,
   geolocation: string | null = null,
-  ipAddress: string | null = null
+  ipAddress: string | null = null,
+  submittedByTeacher: number | null = null,
+  marksObtained: number | null = null,
+  totalMarks: number | null = null,
+  clientSubmissionId: string | null = null
 ) {
-  const studentName = `${studentFirstName} ${studentLastName}`;
-  const result = await sql`
-    INSERT INTO submissions (assessment_id, school_id, student_first_name, student_last_name, student_name, gender, class_grade, section, selected_language, geolocation, ip_address)
-    VALUES (${assessmentId}, ${schoolId}, ${studentFirstName}, ${studentLastName}, ${studentName}, ${gender}, ${classGrade}, ${section}, ${selectedLanguage}, ${geolocation}, ${ipAddress})
-    RETURNING submission_id
-  `;
-  return result[0];
+  const studentName = `${studentFirstName} ${studentLastName} `;
+
+  // Use upsert if clientSubmissionId is provided
+  if (clientSubmissionId) {
+    const result = await sql`
+      INSERT INTO submissions(
+        assessment_id, school_id, student_first_name, student_last_name, student_name, 
+        gender, class_grade, section, selected_language, geolocation, ip_address, 
+        submitted_by_teacher, marks_obtained, total_marks, client_submission_id
+      )
+      VALUES(
+        ${assessmentId}, ${schoolId}, ${studentFirstName}, ${studentLastName}, ${studentName}, 
+        ${gender}, ${classGrade}, ${section}, ${selectedLanguage}, ${geolocation}, ${ipAddress}, 
+        ${submittedByTeacher}, ${marksObtained}, ${totalMarks}, ${clientSubmissionId}
+      )
+      ON CONFLICT (client_submission_id) 
+      DO UPDATE SET
+        assessment_id = EXCLUDED.assessment_id,
+        school_id = EXCLUDED.school_id,
+        student_first_name = EXCLUDED.student_first_name,
+        student_last_name = EXCLUDED.student_last_name,
+        student_name = EXCLUDED.student_name,
+        gender = EXCLUDED.gender,
+        class_grade = EXCLUDED.class_grade,
+        section = EXCLUDED.section,
+        selected_language = EXCLUDED.selected_language,
+        geolocation = EXCLUDED.geolocation,
+        ip_address = EXCLUDED.ip_address,
+        submitted_by_teacher = EXCLUDED.submitted_by_teacher,
+        marks_obtained = EXCLUDED.marks_obtained,
+        total_marks = EXCLUDED.total_marks,
+        submitted_at = NOW() -- Update timestamp on re-submit
+      RETURNING submission_id, (xmax = 0) AS is_insert
+    `;
+
+    const row = result[0];
+    // If it was an update (is_insert is false), clear old answers to ensure fresh state
+    if (!row.is_insert) {
+      await sql`DELETE FROM submission_answers WHERE submission_id = ${row.submission_id}`;
+    }
+
+    return row;
+  } else {
+    // Legacy behavior for submissions without client ID
+    const result = await sql`
+      INSERT INTO submissions(
+        assessment_id, school_id, student_first_name, student_last_name, student_name, 
+        gender, class_grade, section, selected_language, geolocation, ip_address, 
+        submitted_by_teacher, marks_obtained, total_marks
+      )
+      VALUES(
+        ${assessmentId}, ${schoolId}, ${studentFirstName}, ${studentLastName}, ${studentName}, 
+        ${gender}, ${classGrade}, ${section}, ${selectedLanguage}, ${geolocation}, ${ipAddress}, 
+        ${submittedByTeacher}, ${marksObtained}, ${totalMarks}
+      )
+      RETURNING submission_id
+    `;
+    return result[0];
+  }
 }
 
 /**
@@ -177,10 +233,13 @@ export async function saveAnswer(
   answerText: string | null = null,
   answerImageUrl: string | null = null,
   selectedOptions: number[] | null = null,
-  rankingOrder: number[] | null = null
+  rankingOrder: number[] | null = null,
+  marksAwarded: number | null = null
 ) {
-  await sql`
-    INSERT INTO submission_answers (submission_id, question_id, answer_text, answer_image_url, selected_options, ranking_order)
-    VALUES (${submissionId}, ${questionId}, ${answerText}, ${answerImageUrl}, ${selectedOptions}, ${rankingOrder})
-  `;
+  const result = await sql`
+    INSERT INTO submission_answers(submission_id, question_id, answer_text, answer_image_url, selected_options, ranking_order, marks_awarded)
+  VALUES(${submissionId}, ${questionId}, ${answerText}, ${answerImageUrl}, ${selectedOptions}, ${rankingOrder}, ${marksAwarded})
+    RETURNING answer_id
+    `;
+  return result[0]?.answer_id;
 }

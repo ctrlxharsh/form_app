@@ -32,6 +32,7 @@ export interface FormData {
     language?: string;
     group_identifier?: string;
     academic_year?: string;
+    total_marks?: number;
     sections: FormSection[];
 }
 
@@ -104,12 +105,14 @@ export interface CachedAssessment {
 /** Offline submission awaiting sync */
 export interface OfflineSubmission {
     localId?: number;         // Auto-incremented local ID
+    clientSubmissionId: string; // UUID for deduplication
     formId: number;           // assessment_id
     formVersion: string;
     schoolId: number;
     studentFirstName: string;
     studentLastName: string;
     selectedLanguage: string;
+    totalMarks?: number;
     geolocation?: string | null;
     gender: 'Male' | 'Female';
     classGrade: number;
@@ -120,7 +123,12 @@ export interface OfflineSubmission {
     syncedAt: Date | null;
     serverSubmissionId: number | null;
     errorMessage: string | null;
+    submittedByTeacher?: number;  // User ID of teacher who submitted
 }
+
+// ... (AnswerData, PendingImage, SyncMeta, etc. remain unchanged)
+
+// ... (AnswerData, PendingImage, SyncMeta, etc. remain unchanged)
 
 /** Answer data structure matching the original Streamlit logic */
 export interface AnswerData {
@@ -149,6 +157,75 @@ export interface SyncMeta {
     lastSyncAt: Date;
 }
 
+/** Teacher session for persistent login */
+export interface TeacherSession {
+    id: number;               // Always 1 (singleton)
+    userId: number;
+    username: string;
+    fullName: string;
+    role: string;
+    passwordHash: string;     // Original hash from DB
+    storedPassword: string;   // Encrypted password for offline verification
+    canEdit: boolean;
+    loggedInAt: Date;
+}
+
+/** Synced submission cached for offline grading */
+export interface SyncedSubmission {
+    submissionId: number;     // Server submission ID
+    studentFirstName: string;
+    studentLastName: string;
+    classGrade: number;
+    section: string;
+    submittedAt: Date;
+    status: 'pending' | 'graded';
+    marksObtained: number | null;
+    assessmentId: number;
+    assessmentTitle: string;
+    submittedByTeacher: number;
+    subjectiveAnswers: SyncedAnswer[];
+    cachedAt: Date;
+}
+
+export interface SyncedAnswer {
+    answerId: number;
+    questionId: number;
+    answerText: string | null;
+    answerImageUrl: string | null;
+    marksAwarded: number | null;
+    questionText: string;
+    questionType: string;
+    maxMarks: number;
+}
+
+/** Offline grade pending sync */
+export interface OfflineGrade {
+    id?: number;
+    submissionId: number;
+    answerId: number;
+    marks: number;
+    gradedAt: Date;
+    synced: boolean;
+}
+
+/** User credentials cached for offline login */
+export interface KnownUser {
+    userId: number;
+    username: string;
+    fullName: string;
+    role: string;
+    passwordHash: string;
+    storedPassword: string;
+    canEdit: boolean;
+    lastLoginAt: Date;
+}
+
+export interface CachedImage {
+    url: string;
+    blob: Blob;
+    cachedAt: Date;
+}
+
 // ============ DATABASE DEFINITION ============
 
 class FormDatabase extends Dexie {
@@ -158,10 +235,17 @@ class FormDatabase extends Dexie {
     offlineSubmissions!: EntityTable<OfflineSubmission, 'localId'>;
     pendingImages!: EntityTable<PendingImage, 'localId'>;
     syncMeta!: EntityTable<SyncMeta, 'key'>;
+    teacherSession!: EntityTable<TeacherSession, 'id'>;
+    syncedSubmissions!: EntityTable<SyncedSubmission, 'submissionId'>;
+    offlineGrades!: EntityTable<OfflineGrade, 'id'>;
+    knownUsers!: EntityTable<KnownUser, 'userId'>;
+    cachedImages!: EntityTable<CachedImage, 'url'>;
 
     constructor() {
         super('FormAppDB');
 
+
+        // Version 2: Original schema
         this.version(2).stores({
             cachedForms: 'formId, cachedAt',
             cachedSchools: 'school_id, intervention, udise_code',
@@ -169,6 +253,74 @@ class FormDatabase extends Dexie {
             offlineSubmissions: '++localId, formId, status, createdAt',
             pendingImages: '++localId, submissionLocalId, questionId, status',
             syncMeta: 'key'
+        });
+
+        // Version 3: Add teacher session and submittedByTeacher index
+        this.version(3).stores({
+            cachedForms: 'formId, cachedAt',
+            cachedSchools: 'school_id, intervention, udise_code',
+            cachedAssessments: 'assessment_id, class_grade, group_identifier',
+            offlineSubmissions: '++localId, formId, status, createdAt, submittedByTeacher',
+            pendingImages: '++localId, submissionLocalId, questionId, status',
+            syncMeta: 'key',
+            teacherSession: 'id'
+        });
+
+        // Version 4: Add synced submissions and offline grades for offline grading
+        this.version(4).stores({
+            cachedForms: 'formId, cachedAt',
+            cachedSchools: 'school_id, intervention, udise_code',
+            cachedAssessments: 'assessment_id, class_grade, group_identifier',
+            offlineSubmissions: '++localId, formId, status, createdAt, submittedByTeacher',
+            pendingImages: '++localId, submissionLocalId, questionId, status',
+            syncMeta: 'key',
+            teacherSession: 'id',
+            syncedSubmissions: 'submissionId, submittedByTeacher, assessmentId',
+            offlineGrades: '++id, submissionId, answerId, synced'
+        });
+
+        // Version 5: Add knownUsers for offline login cache
+        this.version(5).stores({
+            cachedForms: 'formId, cachedAt',
+            cachedSchools: 'school_id, intervention, udise_code',
+            cachedAssessments: 'assessment_id, class_grade, group_identifier',
+            offlineSubmissions: '++localId, formId, status, createdAt, submittedByTeacher',
+            pendingImages: '++localId, submissionLocalId, questionId, status',
+            syncMeta: 'key',
+            teacherSession: 'id',
+            syncedSubmissions: 'submissionId, submittedByTeacher, assessmentId',
+            offlineGrades: '++id, submissionId, answerId, synced',
+            knownUsers: 'userId, username'
+        });
+
+        // Version 6: Add cachedImages for offline grading of images
+        this.version(6).stores({
+            cachedForms: 'formId, cachedAt',
+            cachedSchools: 'school_id, intervention, udise_code',
+            cachedAssessments: 'assessment_id, class_grade, group_identifier',
+            offlineSubmissions: '++localId, formId, status, createdAt, submittedByTeacher',
+            pendingImages: '++localId, submissionLocalId, questionId, status',
+            syncMeta: 'key',
+            teacherSession: 'id',
+            syncedSubmissions: 'submissionId, submittedByTeacher, assessmentId',
+            offlineGrades: '++id, submissionId, answerId, synced',
+            knownUsers: 'userId, username',
+            cachedImages: 'url'
+        });
+
+        // Version 7: Add compound indexes for efficient querying
+        this.version(7).stores({
+            cachedForms: 'formId, cachedAt',
+            cachedSchools: 'school_id, intervention, udise_code',
+            cachedAssessments: 'assessment_id, class_grade, group_identifier',
+            offlineSubmissions: '++localId, formId, status, createdAt, submittedByTeacher',
+            pendingImages: '++localId, submissionLocalId, questionId, status',
+            syncMeta: 'key',
+            teacherSession: 'id',
+            syncedSubmissions: 'submissionId, submittedByTeacher, assessmentId, [submittedByTeacher+assessmentId]',
+            offlineGrades: '++id, submissionId, answerId, synced, [submissionId+answerId]',
+            knownUsers: 'userId, username',
+            cachedImages: 'url'
         });
     }
 }
@@ -192,6 +344,22 @@ export async function shouldSyncSchools(): Promise<boolean> {
     return elapsed >= SCHOOLS_SYNC_INTERVAL_MS;
 }
 
+// ============ USER CACHING ============
+
+/**
+ * Save user credentials for offline login
+ */
+export async function saveKnownUser(user: KnownUser) {
+    await db.knownUsers.put(user);
+}
+
+/**
+ * Get known user for offline login verification
+ */
+export async function getKnownUser(username: string): Promise<KnownUser | undefined> {
+    return await db.knownUsers.where('username').equals(username).first();
+}
+
 /**
  * Mark schools as synced
  */
@@ -213,12 +381,58 @@ export async function getLastSchoolsSyncTime(): Promise<Date | null> {
 // ============ FORM HELPERS ============
 
 export async function cacheForm(formData: FormData): Promise<void> {
+    // 1. Cache the form definition
     await db.cachedForms.put({
         formId: formData.assessment_id,
         formData,
         cachedAt: new Date(),
         version: new Date().toISOString()
     });
+
+    // 2. Identify all images to cache
+    const urlsToCache = new Set<string>();
+
+    for (const section of formData.sections) {
+        for (const question of section.questions) {
+            if (question.question_image_url) {
+                urlsToCache.add(question.question_image_url);
+            }
+            if (question.options) {
+                for (const option of question.options) {
+                    if (option.option_image_url) {
+                        urlsToCache.add(option.option_image_url);
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Fetch and store images
+    // We execute these in parallel but with a concurrency limit if needed? 
+    // For now, Promise.all is likely fine for typical forms (10-50 images).
+    const fetchPromises = Array.from(urlsToCache).map(async (url) => {
+        try {
+            // Check if already cached to avoid re-fetching
+            const existing = await db.cachedImages.get(url);
+            if (existing) return;
+
+            const response = await fetch(url, { mode: 'cors' });
+            if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+            const blob = await response.blob();
+
+            await db.cachedImages.put({
+                url,
+                blob,
+                cachedAt: new Date()
+            });
+            console.log(`[Cache] Cached image: ${url}`);
+        } catch (err) {
+            console.error(`[Cache] Failed to cache image ${url}:`, err);
+            // We continue even if one fails
+        }
+    });
+
+    await Promise.all(fetchPromises);
 }
 
 export async function getCachedForm(formId: number): Promise<CachedForm | undefined> {
@@ -282,10 +496,11 @@ export async function getCachedAssessmentsByClass(classGrade: number): Promise<C
 // ============ SUBMISSION HELPERS ============
 
 export async function createOfflineSubmission(
-    submission: Omit<OfflineSubmission, 'localId' | 'createdAt' | 'syncedAt' | 'serverSubmissionId' | 'errorMessage'>
+    submission: Omit<OfflineSubmission, 'localId' | 'clientSubmissionId' | 'createdAt' | 'syncedAt' | 'serverSubmissionId' | 'errorMessage'>
 ): Promise<number> {
     const localId = await db.offlineSubmissions.add({
         ...submission,
+        clientSubmissionId: crypto.randomUUID(),
         createdAt: new Date(),
         syncedAt: null,
         serverSubmissionId: null,
@@ -320,6 +535,38 @@ export async function getPendingSubmissionCount(): Promise<number> {
         .where('status')
         .equals('pending')
         .count();
+}
+
+export async function saveSubmissionWithImages(
+    submission: Omit<OfflineSubmission, 'localId' | 'clientSubmissionId' | 'createdAt' | 'syncedAt' | 'serverSubmissionId' | 'errorMessage'>,
+    images: { questionId: number; file: File }[]
+): Promise<number> {
+    return db.transaction('rw', db.offlineSubmissions, db.pendingImages, async () => {
+        const localId = await db.offlineSubmissions.add({
+            ...submission,
+            clientSubmissionId: crypto.randomUUID(),
+            createdAt: new Date(),
+            syncedAt: null,
+            serverSubmissionId: null,
+            errorMessage: null
+        });
+
+        const imageRecords = images.map(img => ({
+            submissionLocalId: localId as number,
+            questionId: img.questionId,
+            imageBlob: img.file,
+            fileName: img.file.name,
+            status: 'pending' as const,
+            cloudinaryUrl: null,
+            createdAt: new Date()
+        }));
+
+        if (imageRecords.length > 0) {
+            await db.pendingImages.bulkAdd(imageRecords as any);
+        }
+
+        return localId as number;
+    });
 }
 
 // ============ IMAGE HELPERS ============
@@ -360,4 +607,239 @@ export async function updateImageStatus(
         status,
         cloudinaryUrl: cloudinaryUrl ?? null
     });
+}
+
+// ============ GRADING HELPERS ============
+
+/**
+ * Cache submissions from server for offline grading
+ */
+export async function cacheSyncedSubmissions(
+    submissions: SyncedSubmission[]
+): Promise<void> {
+    await db.syncedSubmissions.bulkPut(submissions);
+}
+
+/**
+ * Get cached submissions for a teacher
+ */
+export async function getCachedSubmissionsForTeacher(
+    teacherId: number,
+    assessmentId?: number
+): Promise<SyncedSubmission[]> {
+    if (assessmentId) {
+        return db.syncedSubmissions
+            .where('[submittedByTeacher+assessmentId]')
+            .equals([teacherId, assessmentId])
+            .toArray();
+    }
+    return db.syncedSubmissions
+        .where('submittedByTeacher')
+        .equals(teacherId)
+        .toArray();
+}
+
+/**
+ * Get unique assessments from cached submissions
+ */
+export async function getCachedAssessmentsForTeacher(
+    teacherId: number
+): Promise<{ assessmentId: number; title: string }[]> {
+    const submissions = await db.syncedSubmissions
+        .where('submittedByTeacher')
+        .equals(teacherId)
+        .toArray();
+
+    const seen = new Map<number, string>();
+    for (const sub of submissions) {
+        if (!seen.has(sub.assessmentId)) {
+            seen.set(sub.assessmentId, sub.assessmentTitle);
+        }
+    }
+
+    return Array.from(seen.entries()).map(([assessmentId, title]) => ({
+        assessmentId,
+        title
+    }));
+}
+
+/**
+ * Save an offline grade
+ */
+export async function saveOfflineGrade(
+    submissionId: number,
+    answerId: number,
+    marks: number
+): Promise<void> {
+    // Check if grade already exists
+    const existing = await db.offlineGrades
+        .where('[submissionId+answerId]')
+        .equals([submissionId, answerId])
+        .first();
+
+    if (existing) {
+        await db.offlineGrades.update(existing.id!, {
+            marks,
+            gradedAt: new Date(),
+            synced: false
+        });
+    } else {
+        await db.offlineGrades.add({
+            submissionId,
+            answerId,
+            marks,
+            gradedAt: new Date(),
+            synced: false
+        });
+    }
+
+    // Also update the cached submission's answer
+    const submission = await db.syncedSubmissions.get(submissionId);
+    if (submission) {
+        const updatedAnswers = submission.subjectiveAnswers.map(ans =>
+            ans.answerId === answerId ? { ...ans, marksAwarded: marks } : ans
+        );
+        await db.syncedSubmissions.update(submissionId, {
+            subjectiveAnswers: updatedAnswers
+        });
+    }
+}
+
+/**
+ * Get pending (unsynced) offline grades
+ */
+export async function getPendingOfflineGrades(): Promise<OfflineGrade[]> {
+    return db.offlineGrades
+        .where('synced')
+        .equals(0)  // false is stored as 0
+        .toArray();
+}
+
+/**
+ * Mark grades as synced
+ */
+export async function markGradesAsSynced(gradeIds: number[]): Promise<void> {
+    for (const id of gradeIds) {
+        await db.offlineGrades.update(id, { synced: true });
+    }
+}
+
+/**
+ * Get offline grade for an answer
+ */
+export async function getOfflineGradeForAnswer(
+    submissionId: number,
+    answerId: number
+): Promise<number | null> {
+    const grade = await db.offlineGrades
+        .where('[submissionId+answerId]')
+        .equals([submissionId, answerId])
+        .first();
+    return grade?.marks ?? null;
+}
+
+/**
+ * Get offline (unsynced) submissions formatted for grading UI
+ */
+export async function getOfflineGradingSubmissions(teacherId: number): Promise<SyncedSubmission[]> {
+    const offlineSubs = await db.offlineSubmissions
+        .where('submittedByTeacher')
+        .equals(teacherId)
+        .filter(s => s.status === 'pending')
+        .toArray();
+
+    const result: SyncedSubmission[] = [];
+
+    for (const sub of offlineSubs) {
+        const form = await db.cachedForms.get(sub.formId);
+        if (!form) continue;
+
+        // Build question map
+        const qMap = new Map<number, FormQuestion>();
+        form.formData.sections.forEach(s => s.questions.forEach(q => qMap.set(q.question_id, q)));
+
+        // Get grades
+        const grades = await db.offlineGrades.where('submissionId').equals(-sub.localId!).toArray();
+        const gradeMap = new Map(grades.map(g => [g.answerId, g.marks]));
+
+        const subjectiveAnswers: SyncedAnswer[] = [];
+
+        const answers = sub.answers as Record<string, any>; // Cast for access
+
+        for (const [qIdStr, ansVal] of Object.entries(answers)) {
+            const qId = parseInt(qIdStr);
+            const qDef = qMap.get(qId);
+            if (!qDef) continue;
+
+            // Only include subjective questions for grading
+            if (['short_answer', 'long_answer'].includes(qDef.question_type)) {
+                subjectiveAnswers.push({
+                    answerId: -qId, // NEGATIVE ID indicates offline/fake
+                    questionId: qId,
+                    answerText: ansVal.text || '',
+                    answerImageUrl: ansVal.imageUrl || null,
+                    marksAwarded: gradeMap.get(-qId) ?? null,
+                    questionText: qDef.question_text,
+                    questionType: qDef.question_type,
+                    maxMarks: qDef.marks || 0
+                });
+            }
+        }
+
+        // Only add if there are subjective answers to grade
+        if (subjectiveAnswers.length > 0) {
+            result.push({
+                submissionId: -sub.localId!, // NEGATIVE ID indicates offline
+                studentFirstName: sub.studentFirstName,
+                studentLastName: sub.studentLastName,
+                classGrade: sub.classGrade,
+                section: sub.section,
+                submittedAt: sub.createdAt,
+                status: 'pending',
+                marksObtained: null,
+                assessmentId: sub.formId,
+                assessmentTitle: form.formData.title,
+                submittedByTeacher: teacherId,
+                subjectiveAnswers,
+                cachedAt: new Date()
+            });
+        }
+    }
+    return result;
+}
+
+/**
+ * Get count of submissions pending grading for a teacher
+ */
+export async function getPendingGradingCount(teacherId: number): Promise<number> {
+    return db.syncedSubmissions
+        .where('submittedByTeacher')
+        .equals(teacherId)
+        .filter(sub => sub.status === 'pending')
+        .count();
+}
+
+// ============ IMAGE CACHING ============
+
+export async function cacheImage(url: string, blob: Blob) {
+    if (!url || !blob) return;
+    try {
+        await db.cachedImages.put({
+            url,
+            blob,
+            cachedAt: new Date()
+        });
+    } catch (e) {
+        console.warn('Failed to cache image:', url, e);
+    }
+}
+
+export async function getCachedImageBlob(url: string): Promise<Blob | undefined> {
+    if (!url) return undefined;
+    try {
+        const record = await db.cachedImages.get(url);
+        return record?.blob;
+    } catch {
+        return undefined;
+    }
 }

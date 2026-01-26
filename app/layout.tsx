@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Source_Sans_3 } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { ClientLayout } from "@/components/ClientLayout";
 import "./globals.css";
 
 const sourceSans = Source_Sans_3({
@@ -36,8 +37,10 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${sourceSans.variable} antialiased`}>
         <ServiceWorkerRegister />
-        {children}
+        <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
   );
 }
+
+

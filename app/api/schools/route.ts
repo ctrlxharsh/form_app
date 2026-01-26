@@ -1,41 +1,95 @@
 /**
  * API Route: GET /api/schools
  * 
- * Fetches schools from PostgreSQL.
- * - GET /api/schools?all=true → Returns all schools (for syncing to IndexedDB)
- * - GET /api/schools?intervention=Prototype → Returns schools by intervention type
+ * Fetches schools from PostgreSQL with RBAC + intervention filtering.
+ * - M&E/Lead: All schools (optionally filtered by intervention)
+ * - Teacher/PM: Only assigned schools (optionally filtered by intervention)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllSchools, getSchoolsByIntervention, validateSchoolUdise } from '@/lib/postgres';
+import { sql } from '@/lib/postgres';
 
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams;
-        const all = searchParams.get('all');
         const intervention = searchParams.get('intervention');
+        const userId = searchParams.get('userId');
+        const role = searchParams.get('role');
 
-        // Return all schools for syncing
-        if (all === 'true') {
-            const schools = await getAllSchools();
-            return NextResponse.json(schools);
-        }
+        let schools;
 
-        // Return schools filtered by intervention
-        if (intervention) {
-            if (!['Prototype', 'Propagate'].includes(intervention)) {
-                return NextResponse.json(
-                    { error: 'Invalid intervention type' },
-                    { status: 400 }
-                );
+        // If user is logged in and not M&E/Lead, filter by assigned schools
+        if (userId && role && !['M&E', 'Lead'].includes(role)) {
+            if (role === 'Program Manager') {
+                // PM sees schools assigned to their teachers + intervention filter
+                if (intervention && ['Prototype', 'Propagate'].includes(intervention)) {
+                    schools = await sql`
+                        SELECT DISTINCT s.school_id, s.school_name, s.udise_code, 
+                               s.local_education_admin, s.state, s.district, s.intervention
+                        FROM schools s
+                        JOIN access_role_schools ars ON s.school_id = ars.school_id
+                        JOIN user_access_roles uar ON ars.access_role_id = uar.access_role_id
+                        JOIN program_manager_teacher_mapping pmtm ON uar.user_id = pmtm.teacher_id
+                        WHERE pmtm.program_manager_id = ${parseInt(userId)}
+                        AND s.intervention = ${intervention}
+                        ORDER BY s.school_name
+                    `;
+                } else {
+                    schools = await sql`
+                        SELECT DISTINCT s.school_id, s.school_name, s.udise_code, 
+                               s.local_education_admin, s.state, s.district, s.intervention
+                        FROM schools s
+                        JOIN access_role_schools ars ON s.school_id = ars.school_id
+                        JOIN user_access_roles uar ON ars.access_role_id = uar.access_role_id
+                        JOIN program_manager_teacher_mapping pmtm ON uar.user_id = pmtm.teacher_id
+                        WHERE pmtm.program_manager_id = ${parseInt(userId)}
+                        ORDER BY s.school_name
+                    `;
+                }
+            } else {
+                // Teacher sees only their assigned schools + intervention filter
+                if (intervention && ['Prototype', 'Propagate'].includes(intervention)) {
+                    schools = await sql`
+                        SELECT DISTINCT s.school_id, s.school_name, s.udise_code, 
+                               s.local_education_admin, s.state, s.district, s.intervention
+                        FROM schools s
+                        JOIN access_role_schools ars ON s.school_id = ars.school_id
+                        JOIN user_access_roles uar ON ars.access_role_id = uar.access_role_id
+                        WHERE uar.user_id = ${parseInt(userId)}
+                        AND s.intervention = ${intervention}
+                        ORDER BY s.school_name
+                    `;
+                } else {
+                    schools = await sql`
+                        SELECT DISTINCT s.school_id, s.school_name, s.udise_code, 
+                               s.local_education_admin, s.state, s.district, s.intervention
+                        FROM schools s
+                        JOIN access_role_schools ars ON s.school_id = ars.school_id
+                        JOIN user_access_roles uar ON ars.access_role_id = uar.access_role_id
+                        WHERE uar.user_id = ${parseInt(userId)}
+                        ORDER BY s.school_name
+                    `;
+                }
             }
-
-            const schools = await getSchoolsByIntervention(intervention);
-            return NextResponse.json(schools);
+        } else if (intervention && ['Prototype', 'Propagate'].includes(intervention)) {
+            // M&E/Lead with intervention filter
+            schools = await sql`
+                SELECT school_id, school_name, udise_code, local_education_admin, 
+                       state, district, intervention
+                FROM schools
+                WHERE intervention = ${intervention}
+                ORDER BY school_name
+            `;
+        } else {
+            // M&E/Lead - all schools
+            schools = await sql`
+                SELECT school_id, school_name, udise_code, local_education_admin, 
+                       state, district, intervention
+                FROM schools
+                ORDER BY school_name
+            `;
         }
 
-        // Default: return all schools
-        const schools = await getAllSchools();
         return NextResponse.json(schools);
 
     } catch (error) {
@@ -63,7 +117,10 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const isValid = await validateSchoolUdise(schoolId, udiseCode);
+        const result = await sql`
+            SELECT 1 FROM schools WHERE school_id = ${schoolId} AND udise_code = ${udiseCode}
+        `;
+        const isValid = result.length > 0;
         return NextResponse.json({ valid: isValid });
 
     } catch (error) {

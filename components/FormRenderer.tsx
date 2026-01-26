@@ -7,7 +7,7 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { QuestionInput, type AnswerValue } from './QuestionInput';
 import { StudentDetailsForm, type StudentDetails } from './StudentDetailsForm';
@@ -15,6 +15,7 @@ import {
     type FormData,
     type FormSection,
     cacheForm,
+    getCachedForm,
     createOfflineSubmission,
     queueImageForUpload
 } from '@/lib/db';
@@ -35,6 +36,13 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isCached, setIsCached] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Check if form is already cached on mount
+    useEffect(() => {
+        getCachedForm(formData.assessment_id).then(cached => {
+            setIsCached(!!cached);
+        });
+    }, [formData.assessment_id]);
 
     const totalSections = formData.sections.length;
     const currentSection = formData.sections[currentSectionIndex];
@@ -145,6 +153,10 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     }
                 }
 
+                // Get teacher session to send with submission
+                const { getTeacherSession } = await import('@/lib/auth');
+                const teacherSession = await getTeacherSession();
+
                 const response = await fetch('/api/submit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -157,9 +169,10 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                         gender: studentDetails.gender,
                         classGrade: studentDetails.classGrade,
                         section: studentDetails.section,
-                        selectedLanguage: formData.language || 'English', // Assuming language is passed in formData
+                        selectedLanguage: formData.language || 'English',
                         geolocation: studentDetails.geolocation || null,
-                        answers: processedAnswers
+                        answers: processedAnswers,
+                        submittedByTeacher: teacherSession?.userId || null
                     })
                 });
 
@@ -169,36 +182,88 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                 }
 
                 const result = await response.json();
+
+                // MIRROR TO LOCAL CACHE FOR OFFLINE GRADING if teacher is logged in
+                // teacherSession is already fetched above for the submission
+
+                if (teacherSession) {
+                    const { db } = await import('@/lib/db');
+
+                    // Collect all subjective answers fromformData
+                    const subjectiveAnswers: any[] = [];
+                    for (const section of formData.sections) {
+                        for (const q of section.questions) {
+                            if (['short_answer', 'long_answer', 'image_upload'].includes(q.question_type)) {
+                                const answer = answers[q.question_id];
+                                if (answer) {
+                                    subjectiveAnswers.push({
+                                        answerId: result.answerIds[q.question_id] || 0,
+                                        questionId: q.question_id,
+                                        answerText: answer.text || null,
+                                        answerImageUrl: processedAnswers[q.question_id]?.imageUrl || null,
+                                        marksAwarded: null,
+                                        questionText: q.question_text,
+                                        questionType: q.question_type,
+                                        maxMarks: q.marks
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    if (subjectiveAnswers.length > 0) {
+                        await db.syncedSubmissions.put({
+                            submissionId: result.submissionId,
+                            studentFirstName: studentDetails.studentFirstName,
+                            studentLastName: studentDetails.studentLastName,
+                            classGrade: studentDetails.classGrade,
+                            section: studentDetails.section,
+                            submittedAt: new Date(),
+                            status: 'pending',
+                            marksObtained: null,
+                            assessmentId: formData.assessment_id,
+                            assessmentTitle: formData.title,
+                            submittedByTeacher: teacherSession.userId,
+                            subjectiveAnswers,
+                            cachedAt: new Date()
+                        });
+                    }
+                }
+
                 onComplete(result.submissionId);
 
             } else {
                 // OFFLINE: Store locally in IndexedDB
-                const localId = await createOfflineSubmission({
+                // Get teacher session for offline submission too
+                const { getTeacherSession } = await import('@/lib/auth');
+                const teacherSession = await getTeacherSession();
+
+                // Atomic transaction for submission + images
+                const { saveSubmissionWithImages } = await import('@/lib/db');
+
+                const imagesToSave = Object.entries(answers)
+                    .filter(([_, answer]) => answer.file)
+                    .map(([questionIdStr, answer]) => ({
+                        questionId: parseInt(questionIdStr, 10),
+                        file: answer.file!
+                    }));
+
+                const localId = await saveSubmissionWithImages({
                     formId: formData.assessment_id,
                     formVersion: new Date().toISOString(),
                     schoolId: studentDetails.schoolId,
                     studentFirstName: studentDetails.studentFirstName,
                     studentLastName: studentDetails.studentLastName,
                     selectedLanguage: formData.language || 'English',
+                    totalMarks: formData.total_marks,
                     geolocation: studentDetails.geolocation || null,
                     gender: studentDetails.gender,
                     classGrade: studentDetails.classGrade,
                     section: studentDetails.section,
                     answers: processedAnswers,
-                    status: 'pending'
-                });
-
-                for (const [questionIdStr, answer] of Object.entries(answers)) {
-                    if (answer.file) {
-                        const questionId = parseInt(questionIdStr, 10);
-                        await queueImageForUpload(
-                            localId,
-                            questionId,
-                            answer.file,
-                            answer.file.name
-                        );
-                    }
-                }
+                    status: 'pending',
+                    submittedByTeacher: teacherSession?.userId
+                }, imagesToSave);
 
                 triggerSync().catch(() => { });
                 onComplete(`offline-${localId}`);
@@ -400,6 +465,13 @@ function FormHeader({
     isCached: boolean;
     onSaveForOffline: () => void;
 }) {
+    const [justSaved, setJustSaved] = useState(false);
+
+    const handleSave = () => {
+        onSaveForOffline();
+        setJustSaved(true);
+    };
+
     return (
         <div className="form-header-bar">
             <div className="form-header-content">
@@ -412,12 +484,12 @@ function FormHeader({
                 )}
             </div>
             <div className="form-header-actions">
-                {!isCached ? (
-                    <button onClick={onSaveForOffline} className="save-offline-btn">
-                        💾 Save Offline
-                    </button>
-                ) : (
+                {justSaved ? (
                     <span className="cached-badge">✓ Saved Offline</span>
+                ) : (
+                    <button onClick={handleSave} className="save-offline-btn">
+                        💾 {isCached ? 'Update Offline' : 'Save Offline'}
+                    </button>
                 )}
             </div>
         </div>
