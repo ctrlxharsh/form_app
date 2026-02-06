@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/postgres';
+import { logError } from '@/lib/error-logger';
 
 /**
  * GET /api/grading?teacherId=X&assessmentId=Y
@@ -158,7 +159,11 @@ export async function GET(request: NextRequest) {
         });
 
     } catch (error) {
-        console.error('Error fetching grading data:', error);
+        await logError({
+            error,
+            endpoint: '/api/grading GET',
+            userId: request.nextUrl.searchParams.get('teacherId')
+        });
         return NextResponse.json(
             { error: 'Failed to fetch grading data' },
             { status: 500 }
@@ -273,7 +278,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true });
 
     } catch (error) {
-        console.error('Error saving grades:', error);
+        await logError({
+            error,
+            endpoint: '/api/grading POST'
+        });
         return NextResponse.json(
             { error: 'Failed to save grades' },
             { status: 500 }
@@ -361,7 +369,10 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ success: true, graded: submissionIds.length });
 
     } catch (error) {
-        console.error('Error auto-grading:', error);
+        await logError({
+            error,
+            endpoint: '/api/grading PATCH'
+        });
         return NextResponse.json(
             { error: 'Failed to auto-grade' },
             { status: 500 }

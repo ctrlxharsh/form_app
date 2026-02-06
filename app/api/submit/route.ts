@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createSubmission, saveAnswer, getFullAssessment } from '@/lib/postgres';
+import { logError } from '@/lib/error-logger';
 
 interface SubmitRequest {
     assessmentId: number;
@@ -172,7 +173,11 @@ export async function POST(request: NextRequest) {
         });
 
     } catch (error) {
-        console.error('Error submitting assessment:', error);
+        await logError({
+            error,
+            endpoint: '/api/submit POST',
+            requestData: { assessmentId: 'present', schoolId: 'present' }
+        });
         return NextResponse.json(
             { error: 'Failed to submit assessment' },
             { status: 500 }

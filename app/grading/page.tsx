@@ -443,6 +443,15 @@ export default function GradingPage() {
                             {pendingGradesCount} pending
                         </span>
                     )}
+                    {online && syncedSubmissions.length > 0 && (
+                        <button
+                            onClick={handleMarkAsGraded}
+                            disabled={saving || syncing}
+                            className="mark-graded-btn-header"
+                        >
+                            ✓ Sync Grades to Database
+                        </button>
+                    )}
                     <Link href="/" className="back-btn">← Dashboard</Link>
                 </div>
             </header>
@@ -503,7 +512,7 @@ export default function GradingPage() {
                 </div>
             )}
 
-            {/* Save Button */}
+            {/* Save Button - with tables */}
             {(syncedSubmissions.length > 0 || unsyncedSubmissions.length > 0) && (
                 <div className="grading-actions">
                     <button
@@ -511,17 +520,8 @@ export default function GradingPage() {
                         disabled={saving || syncing}
                         className="save-btn"
                     >
-                        {saving || syncing ? 'Saving...' : online ? '💾 Save & Sync' : '💾 Save Locally'}
+                        {saving || syncing ? 'Saving...' : online ? '💾 Save & Sync Grades' : '💾 Save Locally'}
                     </button>
-                    {online && syncedSubmissions.length > 0 && (
-                        <button
-                            onClick={handleMarkAsGraded}
-                            disabled={saving || syncing}
-                            className="mark-graded-btn"
-                        >
-                            ✓ Mark Synced as Graded
-                        </button>
-                    )}
                     {saveMessage && (
                         <span className={`save-message ${saveMessage.includes('success') || saveMessage.includes('synced') || saveMessage.includes('graded') ? 'success' : ''}`}>
                             {saveMessage}
@@ -572,6 +572,27 @@ export default function GradingPage() {
                     border-radius: 8px;
                     text-decoration: none;
                     color: #333;
+                }
+                .mark-graded-btn-header {
+                    padding: 10px 20px;
+                    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+                    transition: all 0.2s ease;
+                }
+                .mark-graded-btn-header:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 6px 16px rgba(40, 167, 69, 0.4);
+                }
+                .mark-graded-btn-header:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                    transform: none;
                 }
                 .grading-filters {
                     display: flex;
@@ -878,22 +899,57 @@ function GradingTable({ submissions, grades, onGradeChange }: {
 
 function ImageLink({ url }: { url: string }) {
     const [blobUrl, setBlobUrl] = useState<string | null>(null);
+    const [isOffline, setIsOffline] = useState(false);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!navigator.onLine) {
+        const offline = !navigator.onLine;
+        setIsOffline(offline);
+
+        if (offline) {
             import('@/lib/db').then(({ getCachedImageBlob }) => {
                 getCachedImageBlob(url).then(blob => {
                     if (blob) setBlobUrl(URL.createObjectURL(blob));
+                    setLoading(false);
                 });
             });
+        } else {
+            setLoading(false);
         }
+
+        const handleOnline = () => setIsOffline(false);
+        const handleOffline = () => setIsOffline(true);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
     }, [url]);
 
-    const finalUrl = blobUrl || url;
+    // If online, use the original URL
+    if (!isOffline) {
+        return (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="view-img-link">
+                📷 Open image
+            </a>
+        );
+    }
 
+    // If offline and we have cached image, use it
+    if (blobUrl) {
+        return (
+            <a href={blobUrl} target="_blank" rel="noopener noreferrer" className="view-img-link">
+                📷 Image (Offline)
+            </a>
+        );
+    }
+
+    // If offline and no cache, show message
     return (
-        <a href={finalUrl} target="_blank" rel="noopener noreferrer" className="view-img-link">
-            📷 Image {blobUrl ? '(Offline)' : ''}
-        </a>
+        <span className="view-img-link disabled" title="Image not available offline">
+            📷 {loading ? 'Loading...' : 'Not cached'}
+        </span>
     );
 }
+

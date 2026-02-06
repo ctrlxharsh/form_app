@@ -108,8 +108,9 @@ export async function getAllPublishedAssessments() {
 export async function getAllSchools() {
   return sql`
     SELECT school_id, school_name, udise_code, local_education_admin,
-    state, district, intervention
+    state, district, intervention, is_active
     FROM schools
+    WHERE is_active = true
     ORDER BY school_name
     `;
 }
@@ -121,9 +122,9 @@ export async function getAllSchools() {
 export async function getSchoolsByIntervention(intervention: string) {
   return sql`
     SELECT school_id, school_name, udise_code, local_education_admin,
-    state, district, intervention
+    state, district, intervention, is_active
     FROM schools
-    WHERE intervention = ${intervention}
+    WHERE intervention = ${intervention} AND is_active = true
     ORDER BY school_name
     `;
 }
