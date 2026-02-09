@@ -19,7 +19,7 @@ import {
     createOfflineSubmission,
     queueImageForUpload
 } from '@/lib/db';
-import { isOnline, triggerSync } from '@/lib/sync';
+import { isOnline } from '@/lib/sync';
 
 interface FormRendererProps {
     formData: FormData;
@@ -265,7 +265,8 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     submittedByTeacher: teacherSession?.userId
                 }, imagesToSave);
 
-                triggerSync().catch(() => { });
+                // Don't trigger sync immediately after offline submission
+                // Sync will happen automatically when device comes back online via 'online' event listener
                 onComplete(`offline-${localId}`);
             }
 

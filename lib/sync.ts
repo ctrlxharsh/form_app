@@ -66,6 +66,9 @@ export function cleanupSyncListeners(): void {
 export async function triggerSync(): Promise<void> {
     if (!navigator.onLine) return;
     if (isSyncing) return;
+    // Verify actual connectivity before attempting sync
+    const actuallyOnline = await checkActualConnectivity();
+    if (!actuallyOnline) return;
     await performSync();
 }
 
@@ -93,15 +96,58 @@ export function isOnline(): boolean {
     return typeof navigator !== 'undefined' && navigator.onLine;
 }
 
+// ============ CONNECTIVITY CHECK ============
+
+/**
+ * Check actual internet connectivity by making a real request.
+ * navigator.onLine can be unreliable on flaky connections.
+ */
+async function checkActualConnectivity(): Promise<boolean> {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const response = await fetch('/api/health', {
+            method: 'HEAD',
+            signal: controller.signal,
+            cache: 'no-store'
+        });
+        clearTimeout(timeoutId);
+        return response.ok;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Check if an error is a network-related error (offline, timeout, etc.)
+ */
+function isNetworkError(error: unknown): boolean {
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        return true;
+    }
+    if (error instanceof DOMException && error.name === 'AbortError') {
+        return true;
+    }
+    return false;
+}
+
 // ============ INTERNAL SYNC LOGIC ============
 
 async function handleOnline(): Promise<void> {
-    await performSync();
+    // Small delay to allow network to stabilize after coming online
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const actuallyOnline = await checkActualConnectivity();
+    if (actuallyOnline) {
+        await performSync();
+    }
 }
 
 async function handleFocus(): Promise<void> {
     if (navigator.onLine && !isSyncing) {
-        await performSync();
+        const actuallyOnline = await checkActualConnectivity();
+        if (actuallyOnline) {
+            await performSync();
+        }
     }
 }
 
