@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import { FormRenderer } from '@/components/FormRenderer';
 import { OfflineStatus } from '@/components/OfflineStatus';
 import { getCachedForm, type FormData } from '@/lib/db';
-import { initSyncListeners, isOnline, triggerSync } from '@/lib/sync';
+import { initSyncListeners, isOnline, triggerSync, checkActualConnectivity } from '@/lib/sync';
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -54,7 +54,10 @@ export default function FormPage({ params }: PageProps) {
             }
 
             try {
-                if (isOnline()) {
+                // Use robust connectivity check
+                const online = await checkActualConnectivity();
+
+                if (online) {
                     // Try to fetch from API
                     const response = await fetch(`/api/forms/${assessmentId}`);
 

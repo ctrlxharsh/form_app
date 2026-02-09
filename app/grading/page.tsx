@@ -18,9 +18,11 @@ import {
     saveOfflineGrade,
     getPendingOfflineGrades,
     markGradesAsSynced,
+    getSubmissionIdsWithPendingGrades,
     type SyncedSubmission,
     type SyncedAnswer
 } from '@/lib/db';
+import { checkActualConnectivity } from '@/lib/sync';
 
 interface Assessment {
     assessmentId: number;
@@ -36,8 +38,10 @@ export default function GradingPage() {
     const [passwordError, setPasswordError] = useState<string | null>(null);
     const [verifying, setVerifying] = useState(false);
 
-    const [syncedSubmissions, setSyncedSubmissions] = useState<SyncedSubmission[]>([]);
-    const [unsyncedSubmissions, setUnsyncedSubmissions] = useState<SyncedSubmission[]>([]);
+    // 3 categories based on flowchart
+    const [onlineGrading, setOnlineGrading] = useState<SyncedSubmission[]>([]);        // Synced from server, need grading
+    const [canGradeOffline, setCanGradeOffline] = useState<SyncedSubmission[]>([]);    // Pending offline submissions
+    const [gradedPendingSync, setGradedPendingSync] = useState<SyncedSubmission[]>([]); // Locally graded, waiting to sync
     const [assessments, setAssessments] = useState<Assessment[]>([]);
     const [selectedAssessment, setSelectedAssessment] = useState<number | 'all'>('all');
     const [grades, setGrades] = useState<Record<number, Record<number, number>>>({});
@@ -60,27 +64,36 @@ export default function GradingPage() {
         }
         checkSession();
 
-        // Online/offline detection
-        setOnline(navigator.onLine);
-        const handleOnline = () => setOnline(true);
-        const handleOffline = () => setOnline(false);
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
+        // Online/offline detection - use robust connectivity check
+        checkActualConnectivity().then(setOnline);
+
+        const handleNetworkChange = () => {
+            checkActualConnectivity().then(setOnline);
+        };
+
+        window.addEventListener('online', handleNetworkChange);
+        window.addEventListener('offline', handleNetworkChange);
+
+        // Periodic recheck every 15 seconds
+        const interval = setInterval(() => {
+            checkActualConnectivity().then(setOnline);
+        }, 15000);
 
         return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
+            window.removeEventListener('online', handleNetworkChange);
+            window.removeEventListener('offline', handleNetworkChange);
+            clearInterval(interval);
         };
     }, [router]);
 
-    // Load submissions (online: from API + cache; offline: from cache only)
+    // Load submissions categorized into 3 sections
     const loadSubmissions = useCallback(async () => {
         if (!session) return;
 
-        let syncedData: SyncedSubmission[] = [];
-        let offlineData: SyncedSubmission[] = [];
+        let allSyncedData: SyncedSubmission[] = [];
+        let allOfflineData: SyncedSubmission[] = [];
 
-        // 1. Load Synced/Cached Submissions
+        // 1. Load Synced/Cached Submissions from Server
         if (online) {
             try {
                 const assessmentParam = selectedAssessment !== 'all' ? `&assessmentId=${selectedAssessment}` : '';
@@ -114,7 +127,7 @@ export default function GradingPage() {
                     }));
 
                     await cacheSyncedSubmissions(fetchedSubs);
-                    syncedData = fetchedSubs;
+                    allSyncedData = fetchedSubs;
 
                     setAssessments(data.assessments.map((a: any) => ({
                         assessmentId: a.assessment_id,
@@ -126,39 +139,58 @@ export default function GradingPage() {
             } catch (err) {
                 console.error('Online load failed, falling back to cache', err);
                 const assessmentId = selectedAssessment !== 'all' ? selectedAssessment : undefined;
-                syncedData = await getCachedSubmissionsForTeacher(session.userId, assessmentId);
+                allSyncedData = await getCachedSubmissionsForTeacher(session.userId, assessmentId);
             }
         } else {
             const assessmentId = selectedAssessment !== 'all' ? selectedAssessment : undefined;
-            syncedData = await getCachedSubmissionsForTeacher(session.userId, assessmentId);
+            allSyncedData = await getCachedSubmissionsForTeacher(session.userId, assessmentId);
 
             const cachedAssessments = await getCachedAssessmentsForTeacher(session.userId);
             setAssessments(cachedAssessments);
         }
 
-        // 2. Load Offline/Unsynced Submissions
+        // 2. Load Offline/Pending Submissions
         try {
             const { getOfflineGradingSubmissions } = await import('@/lib/db');
-            offlineData = await getOfflineGradingSubmissions(session.userId);
+            allOfflineData = await getOfflineGradingSubmissions(session.userId);
 
             if (selectedAssessment !== 'all') {
-                offlineData = offlineData.filter(s => s.assessmentId === selectedAssessment);
+                allOfflineData = allOfflineData.filter(s => s.assessmentId === selectedAssessment);
             }
         } catch (e) { console.error('Error loading offline subs', e); }
 
-        setSyncedSubmissions(syncedData);
-        setUnsyncedSubmissions(offlineData);
+        // 3. Get IDs of submissions that have pending local grades
+        const pendingGradeSubmissionIds = await getSubmissionIdsWithPendingGrades();
 
-        // 3. Initialize grades
+        // 4. Categorize submissions into 3 sections
+        // Section 1: Online Grading - synced submissions with subjective questions, WITHOUT pending local grades
+        const onlineGradingList = allSyncedData.filter(s =>
+            s.subjectiveAnswers.length > 0 && !pendingGradeSubmissionIds.has(s.submissionId)
+        );
+
+        // Section 2: Can Grade Offline - offline submissions WITHOUT pending local grades
+        const canGradeOfflineList = allOfflineData.filter(s =>
+            !pendingGradeSubmissionIds.has(s.submissionId)
+        );
+
+        // Section 3: Graded Yet to Be Synced - any submission (synced or offline) WITH pending local grades
+        const gradedPendingSyncList = [
+            ...allSyncedData.filter(s => pendingGradeSubmissionIds.has(s.submissionId)),
+            ...allOfflineData.filter(s => pendingGradeSubmissionIds.has(s.submissionId))
+        ];
+
+        setOnlineGrading(onlineGradingList);
+        setCanGradeOffline(canGradeOfflineList);
+        setGradedPendingSync(gradedPendingSyncList);
+
+        // 5. Initialize grades state
+        const allSubmissions = [...allSyncedData, ...allOfflineData];
         const initialGrades: Record<number, Record<number, number>> = {};
 
-        // Populate updates from offlineGrades table (local overrides)
+        // Load local grade overrides
         let localGradesMap: Record<number, Record<number, number>> = {};
         try {
             const { db } = await import('@/lib/db');
-            // We need to fetch all offline grades. 
-            // Since we can't easily filter by "submissions in this list" without many queries, 
-            // we'll fetch unsynced grades and filter in memory or iterate.
             const pendingGrades = await db.offlineGrades.where('synced').equals(0).toArray();
 
             for (const pg of pendingGrades) {
@@ -169,21 +201,18 @@ export default function GradingPage() {
             console.error('Failed to load local grades', e);
         }
 
-        for (const sub of [...syncedData, ...offlineData]) {
+        for (const sub of allSubmissions) {
             initialGrades[sub.submissionId] = {};
             for (const ans of sub.subjectiveAnswers) {
-                // specific offline grade > cached server grade > 0
                 const localMark = localGradesMap[sub.submissionId]?.[ans.answerId];
                 initialGrades[sub.submissionId][ans.answerId] = localMark ?? ans.marksAwarded ?? 0;
             }
         }
         setGrades(initialGrades);
 
-        // Check pending
-        try {
-            const pendingGrades = await getPendingOfflineGrades();
-            setPendingGradesCount(pendingGrades.length);
-        } catch (e) { console.error(e); }
+        // 6. Update pending grades count
+        setPendingGradesCount(pendingGradeSubmissionIds.size);
+
     }, [session, selectedAssessment, online]);
 
     useEffect(() => {
@@ -307,7 +336,7 @@ export default function GradingPage() {
         setSaveMessage(null);
 
         try {
-            const submissionIds = syncedSubmissions.map(s => s.submissionId);
+            const submissionIds = onlineGrading.map((s: SyncedSubmission) => s.submissionId);
             const response = await fetch('/api/grading', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -443,7 +472,7 @@ export default function GradingPage() {
                             {pendingGradesCount} pending
                         </span>
                     )}
-                    {online && syncedSubmissions.length > 0 && (
+                    {online && onlineGrading.length > 0 && (
                         <button
                             onClick={handleMarkAsGraded}
                             disabled={saving || syncing}
@@ -475,35 +504,52 @@ export default function GradingPage() {
                 )}
             </div>
 
-            {/* Grading Tables Grouped by Assessment */}
-            {/* Grading Tables Grouped by Assessment */}
-            {syncedSubmissions.length === 0 && unsyncedSubmissions.length === 0 ? (
+            {/* 3 Sections as per flowchart */}
+            {onlineGrading.length === 0 && canGradeOffline.length === 0 && gradedPendingSync.length === 0 ? (
                 <div className="no-submissions">
                     <p>{online ? 'No submissions found.' : 'No cached submissions. Go online to sync.'}</p>
                 </div>
             ) : (
                 <div className="grading-groups">
-                    {/* Unsynced Section */}
-                    {unsyncedSubmissions.length > 0 && (
-                        <div className="unsynced-section">
-                            <div className="section-banner warning">
-                                <h3>⚠️ Unsynced Offline Submissions</h3>
-                                <p>These submissions are stored locally and need to be synced when online.</p>
+                    {/* Section 1: Online Grading */}
+                    {onlineGrading.length > 0 && (
+                        <div className="grading-section online-section">
+                            <div className="section-banner info">
+                                <h3>📝 Online Grading</h3>
+                                <p>Submissions synced from server with subjective questions to grade.</p>
                             </div>
                             <GradingTable
-                                submissions={unsyncedSubmissions}
+                                submissions={onlineGrading}
                                 grades={grades}
                                 onGradeChange={handleGradeChange}
                             />
                         </div>
                     )}
 
-                    {/* Synced Section */}
-                    {syncedSubmissions.length > 0 && (
-                        <div className="synced-section">
-                            {unsyncedSubmissions.length > 0 && <h3>✅ Synced Submissions</h3>}
+                    {/* Section 2: Can Grade Offline */}
+                    {canGradeOffline.length > 0 && (
+                        <div className="grading-section offline-section">
+                            <div className="section-banner warning">
+                                <h3>📴 Can Grade Offline</h3>
+                                <p>Pending offline submissions - grade these locally.</p>
+                            </div>
                             <GradingTable
-                                submissions={syncedSubmissions}
+                                submissions={canGradeOffline}
+                                grades={grades}
+                                onGradeChange={handleGradeChange}
+                            />
+                        </div>
+                    )}
+
+                    {/* Section 3: Graded Yet to Be Synced */}
+                    {gradedPendingSync.length > 0 && (
+                        <div className="grading-section pending-sync-section">
+                            <div className="section-banner success">
+                                <h3>✅ Graded - Pending Sync</h3>
+                                <p>Locally graded submissions waiting to sync to database.</p>
+                            </div>
+                            <GradingTable
+                                submissions={gradedPendingSync}
                                 grades={grades}
                                 onGradeChange={handleGradeChange}
                             />
@@ -512,8 +558,8 @@ export default function GradingPage() {
                 </div>
             )}
 
-            {/* Save Button - with tables */}
-            {(syncedSubmissions.length > 0 || unsyncedSubmissions.length > 0) && (
+            {/* Save Button */}
+            {(onlineGrading.length > 0 || canGradeOffline.length > 0 || gradedPendingSync.length > 0) && (
                 <div className="grading-actions">
                     <button
                         onClick={handleSaveGrades}
@@ -651,8 +697,19 @@ export default function GradingPage() {
                     border-color: #ffeeba;
                     color: #856404;
                 }
+                .section-banner.info {
+                    background: #d1ecf1;
+                    border-color: #bee5eb;
+                    color: #0c5460;
+                }
+                .section-banner.success {
+                    background: #d4edda;
+                    border-color: #c3e6cb;
+                    color: #155724;
+                }
                 .section-banner h3 { margin: 0 0 4px; font-size: 16px; }
                 .section-banner p { margin: 0; font-size: 14px; }
+                .grading-section { margin-bottom: 32px; }
                 
                 .grading-actions {
                     margin-top: 24px;

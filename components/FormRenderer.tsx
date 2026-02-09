@@ -19,7 +19,7 @@ import {
     createOfflineSubmission,
     queueImageForUpload
 } from '@/lib/db';
-import { isOnline } from '@/lib/sync';
+import { isOnline, checkActualConnectivity } from '@/lib/sync';
 
 interface FormRendererProps {
     formData: FormData;
@@ -100,7 +100,8 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
         setError(null);
 
         try {
-            const online = isOnline();
+            // Use robust connectivity check instead of navigator.onLine
+            const online = await checkActualConnectivity();
 
             // Prepare answer data
             const processedAnswers: Record<number, {

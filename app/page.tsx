@@ -28,6 +28,7 @@ import {
   forceSyncSchools,
   forceSyncAssessments,
   onSyncStatusChange,
+  checkActualConnectivity,
   type SyncStatus
 } from '@/lib/sync';
 import { getTeacherSession, logoutTeacher, type TeacherSession } from '@/lib/auth';
@@ -120,14 +121,20 @@ export default function HomePage() {
   // Initial load
   useEffect(() => {
     initSyncListeners();
-    setOnline(isOnline());
+    checkActualConnectivity().then(setOnline);
     setMounted(true);
 
-    const handleOnline = () => setOnline(true);
-    const handleOffline = () => setOnline(false);
+    const handleNetworkChange = () => {
+      checkActualConnectivity().then(setOnline);
+    };
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleNetworkChange);
+    window.addEventListener('offline', handleNetworkChange);
+
+    // Periodic recheck every 15 seconds
+    const connectivityInterval = setInterval(() => {
+      checkActualConnectivity().then(setOnline);
+    }, 15000);
 
     // Listen for sync status changes
     const unsubscribe = onSyncStatusChange((status) => {
@@ -169,8 +176,9 @@ export default function HomePage() {
     loadData();
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleNetworkChange);
+      window.removeEventListener('offline', handleNetworkChange);
+      clearInterval(connectivityInterval);
       unsubscribe();
     };
   }, [loadCachedForms, loadAssessments, loadPendingSubmissions]);
@@ -220,9 +228,27 @@ export default function HomePage() {
   const cachedFormIds = new Set(cachedForms.map(f => f.formId));
 
   // Filter assessments: when offline, only show cached ones
-  const displayedAssessments = !online
-    ? assessments.filter(a => cachedFormIds.has(a.assessment_id))
-    : assessments;
+  // If assessments is empty but we have cached forms, derive from cached forms
+  let displayedAssessments: Assessment[];
+  if (!online) {
+    const filteredFromAssessments = assessments.filter(a => cachedFormIds.has(a.assessment_id));
+    if (filteredFromAssessments.length > 0) {
+      displayedAssessments = filteredFromAssessments;
+    } else {
+      // Derive from cached forms if assessments cache is empty
+      displayedAssessments = cachedForms.map(f => ({
+        assessment_id: f.formId,
+        title: f.formData.title,
+        description: f.formData.description || null,
+        class_grade: f.formData.class_grade || 0,
+        language: undefined,
+        group_identifier: undefined,
+        academic_year: undefined
+      }));
+    }
+  } else {
+    displayedAssessments = assessments;
+  }
 
   // Group assessments by class
   const groupedAssessments = displayedAssessments.reduce((groups, assessment) => {
@@ -329,24 +355,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Saved Forms */}
-        {cachedForms.length > 0 && (
-          <div className="sidebar-section">
-            <h3>Saved for Offline</h3>
-            <div className="cached-forms-list">
-              {cachedForms.map(form => (
-                <Link
-                  key={form.formId}
-                  href={`/forms/${form.formId}`}
-                  className="cached-form-item"
-                >
-                  <span className="cached-icon">💾</span>
-                  <span className="cached-title">{form.formData.title}</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
+
 
         {/* Teacher Portal */}
         <div className="sidebar-section teacher-section">

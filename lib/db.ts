@@ -640,20 +640,39 @@ export async function getCachedSubmissionsForTeacher(
 }
 
 /**
- * Get unique assessments from cached submissions
+ * Get unique assessments from cached submissions AND offline submissions
  */
 export async function getCachedAssessmentsForTeacher(
     teacherId: number
 ): Promise<{ assessmentId: number; title: string }[]> {
-    const submissions = await db.syncedSubmissions
+    const seen = new Map<number, string>();
+
+    // 1. Get from synced submissions (previously cached from server)
+    const syncedSubmissions = await db.syncedSubmissions
         .where('submittedByTeacher')
         .equals(teacherId)
         .toArray();
 
-    const seen = new Map<number, string>();
-    for (const sub of submissions) {
+    for (const sub of syncedSubmissions) {
         if (!seen.has(sub.assessmentId)) {
             seen.set(sub.assessmentId, sub.assessmentTitle);
+        }
+    }
+
+    // 2. Get from offline submissions (pending sync)
+    const offlineSubs = await db.offlineSubmissions
+        .where('submittedByTeacher')
+        .equals(teacherId)
+        .filter(s => s.status === 'pending')
+        .toArray();
+
+    for (const sub of offlineSubs) {
+        if (!seen.has(sub.formId)) {
+            // Get form title from cached forms
+            const form = await db.cachedForms.get(sub.formId);
+            if (form) {
+                seen.set(sub.formId, form.formData.title);
+            }
         }
     }
 
@@ -725,6 +744,17 @@ export async function markGradesAsSynced(gradeIds: number[]): Promise<void> {
 }
 
 /**
+ * Get unique submission IDs that have pending (unsynced) grades
+ */
+export async function getSubmissionIdsWithPendingGrades(): Promise<Set<number>> {
+    const pendingGrades = await db.offlineGrades
+        .where('synced')
+        .equals(0)
+        .toArray();
+    return new Set(pendingGrades.map(g => g.submissionId));
+}
+
+/**
  * Get offline grade for an answer
  */
 export async function getOfflineGradeForAnswer(
@@ -740,6 +770,7 @@ export async function getOfflineGradeForAnswer(
 
 /**
  * Get offline (unsynced) submissions formatted for grading UI
+ * Shows ALL pending submissions (not just those with subjective questions)
  */
 export async function getOfflineGradingSubmissions(teacherId: number): Promise<SyncedSubmission[]> {
     const offlineSubs = await db.offlineSubmissions
@@ -786,24 +817,22 @@ export async function getOfflineGradingSubmissions(teacherId: number): Promise<S
             }
         }
 
-        // Only add if there are subjective answers to grade
-        if (subjectiveAnswers.length > 0) {
-            result.push({
-                submissionId: -sub.localId!, // NEGATIVE ID indicates offline
-                studentFirstName: sub.studentFirstName,
-                studentLastName: sub.studentLastName,
-                classGrade: sub.classGrade,
-                section: sub.section,
-                submittedAt: sub.createdAt,
-                status: 'pending',
-                marksObtained: null,
-                assessmentId: sub.formId,
-                assessmentTitle: form.formData.title,
-                submittedByTeacher: teacherId,
-                subjectiveAnswers,
-                cachedAt: new Date()
-            });
-        }
+        // Add ALL pending submissions (not just those with subjective answers)
+        result.push({
+            submissionId: -sub.localId!, // NEGATIVE ID indicates offline
+            studentFirstName: sub.studentFirstName,
+            studentLastName: sub.studentLastName,
+            classGrade: sub.classGrade,
+            section: sub.section,
+            submittedAt: sub.createdAt,
+            status: 'pending',
+            marksObtained: null,
+            assessmentId: sub.formId,
+            assessmentTitle: form.formData.title,
+            submittedByTeacher: teacherId,
+            subjectiveAnswers, // May be empty if no subjective questions
+            cachedAt: new Date()
+        });
     }
     return result;
 }

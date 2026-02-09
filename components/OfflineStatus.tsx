@@ -1,34 +1,41 @@
 /**
  * Offline Status Component
  * 
- * Displays current network status and pending sync information.
- * Shows a banner when offline or when there are pending submissions.
+ * Minimal top-right indicator showing offline status and pending submissions.
+ * Uses checkActualConnectivity for reliable offline detection.
  */
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { isOnline, onSyncStatusChange, triggerSync, type SyncStatus } from '@/lib/sync';
+import React, { useState, useEffect, useRef } from 'react';
+import { checkActualConnectivity, onSyncStatusChange, type SyncStatus } from '@/lib/sync';
 import { getPendingSubmissionCount } from '@/lib/db';
 
 export function OfflineStatus() {
-    const [online, setOnline] = useState(true);
+    const [online, setOnline] = useState<boolean | null>(null); // null = checking
     const [pendingCount, setPendingCount] = useState(0);
     const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+    const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
-        // Set initial state
-        setOnline(isOnline());
+        // Check actual connectivity on mount
+        checkActualConnectivity().then(setOnline);
 
         // Load pending count
         getPendingSubmissionCount().then(setPendingCount);
 
-        // Listen for online/offline events
-        const handleOnline = () => setOnline(true);
-        const handleOffline = () => setOnline(false);
+        // Listen for browser online/offline events to trigger recheck
+        const handleNetworkChange = () => {
+            checkActualConnectivity().then(setOnline);
+        };
 
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
+        window.addEventListener('online', handleNetworkChange);
+        window.addEventListener('offline', handleNetworkChange);
+
+        // Periodically recheck connectivity (every 10 seconds)
+        checkIntervalRef.current = setInterval(() => {
+            checkActualConnectivity().then(setOnline);
+        }, 10000);
 
         // Listen for sync status changes
         const unsubscribe = onSyncStatusChange((status) => {
@@ -37,66 +44,46 @@ export function OfflineStatus() {
         });
 
         return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
+            window.removeEventListener('online', handleNetworkChange);
+            window.removeEventListener('offline', handleNetworkChange);
+            if (checkIntervalRef.current) {
+                clearInterval(checkIntervalRef.current);
+            }
             unsubscribe();
         };
     }, []);
 
-    const handleManualSync = async () => {
-        await triggerSync();
-        const count = await getPendingSubmissionCount();
-        setPendingCount(count);
-    };
-
-    // Don't show anything if online and no pending
-    if (online && pendingCount === 0 && !syncStatus?.isSyncing) {
-        return null;
-    }
+    // Don't show anything while checking or if online with no pending
+    if (online === null) return null;
+    if (online && pendingCount === 0 && !syncStatus?.isSyncing) return null;
 
     return (
-        <div className={`offline-status ${online ? 'online' : 'offline'}`}>
-            <div className="status-content">
-                {/* Status indicator */}
-                <div className="status-indicator">
-                    <span className={`status-dot ${online ? 'online' : 'offline'}`} />
-                    <span className="status-text">
-                        {online ? 'Online' : 'Offline'}
+        <div className="offline-status-minimal">
+            {/* Offline indicator */}
+            {!online && (
+                <div className="offline-badge">
+                    <span className="offline-icon">📡</span>
+                    <span>Offline</span>
+                </div>
+            )}
+
+            {/* Pending count - show when offline or syncing */}
+            {pendingCount > 0 && (
+                <div className="pending-badge-minimal">
+                    <span className="pending-count">{pendingCount}</span>
+                    <span className="pending-label">
+                        pending
                     </span>
                 </div>
+            )}
 
-                {/* Pending submissions */}
-                {pendingCount > 0 && (
-                    <div className="pending-info">
-                        <span className="pending-badge">{pendingCount}</span>
-                        <span className="pending-text">
-                            pending submission{pendingCount !== 1 ? 's' : ''}
-                        </span>
-                    </div>
-                )}
-
-                {/* Sync status */}
-                {syncStatus?.isSyncing && (
-                    <div className="sync-info">
-                        <span className="sync-spinner" />
-                        <span>Syncing...</span>
-                    </div>
-                )}
-
-                {/* Sync error */}
-                {syncStatus?.error && (
-                    <div className="sync-error">
-                        <span className="error-text">Sync failed: {syncStatus.error}</span>
-                    </div>
-                )}
-
-                {/* Manual sync button */}
-                {online && pendingCount > 0 && !syncStatus?.isSyncing && (
-                    <button onClick={handleManualSync} className="sync-button">
-                        Sync Now
-                    </button>
-                )}
-            </div>
+            {/* Syncing indicator */}
+            {syncStatus?.isSyncing && (
+                <div className="syncing-badge">
+                    <span className="sync-spinner-small" />
+                    <span>Syncing...</span>
+                </div>
+            )}
         </div>
     );
 }
@@ -105,24 +92,25 @@ export function OfflineStatus() {
  * Compact offline indicator for form headers
  */
 export function OfflineIndicator() {
-    const [online, setOnline] = useState(true);
+    const [online, setOnline] = useState<boolean | null>(null);
 
     useEffect(() => {
-        setOnline(isOnline());
+        checkActualConnectivity().then(setOnline);
 
-        const handleOnline = () => setOnline(true);
-        const handleOffline = () => setOnline(false);
+        const handleNetworkChange = () => {
+            checkActualConnectivity().then(setOnline);
+        };
 
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
+        window.addEventListener('online', handleNetworkChange);
+        window.addEventListener('offline', handleNetworkChange);
 
         return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
+            window.removeEventListener('online', handleNetworkChange);
+            window.removeEventListener('offline', handleNetworkChange);
         };
     }, []);
 
-    if (online) return null;
+    if (online === null || online) return null;
 
     return (
         <div className="offline-indicator">

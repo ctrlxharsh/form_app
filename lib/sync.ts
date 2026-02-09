@@ -101,8 +101,13 @@ export function isOnline(): boolean {
 /**
  * Check actual internet connectivity by making a real request.
  * navigator.onLine can be unreliable on flaky connections.
+ * This is EXPORTED so components can use it before making API calls.
  */
-async function checkActualConnectivity(): Promise<boolean> {
+export async function checkActualConnectivity(): Promise<boolean> {
+    // Quick check first - if navigator says offline, trust it
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return false;
+    }
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000);
