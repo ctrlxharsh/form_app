@@ -933,6 +933,7 @@ body {
 .question-text {
   flex: 1;
   font-size: 14px;
+  white-space: pre-line;
 }
 
 .question-marks {
