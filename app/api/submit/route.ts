@@ -59,17 +59,27 @@ export async function POST(request: NextRequest) {
 
         // --- AUTO-GRADING LOGIC ---
         let marksObtained = 0;
-        const totalMarks = 0; // Does the assessment define total marks?
+
+        // Types that require human grading
+        const SUBJECTIVE_TYPES = ['short_answer', 'long_answer', 'image_upload'];
 
         // Fetch full assessment schema to get correct answers and marks
         const assessmentSchema = await getFullAssessment(assessmentId);
         let calculatedTotalMarks = assessmentSchema?.total_marks ? parseFloat(String(assessmentSchema.total_marks)) : 0;
+        let hasSubjectiveQuestions = false;
+        const subjectiveQuestionIds: number[] = [];
 
         if (assessmentSchema) {
             // Build question map for easy lookup
             const questionMap = new Map<number, any>();
             assessmentSchema.sections.forEach((s: any) =>
-                s.questions.forEach((q: any) => questionMap.set(q.question_id, q))
+                s.questions.forEach((q: any) => {
+                    questionMap.set(q.question_id, q);
+                    if (SUBJECTIVE_TYPES.includes(q.question_type)) {
+                        hasSubjectiveQuestions = true;
+                        subjectiveQuestionIds.push(q.question_id);
+                    }
+                })
             );
 
             // Iterate through answers and calculate marks
@@ -80,25 +90,20 @@ export async function POST(request: NextRequest) {
                 if (question) {
                     let questionMarks = 0;
 
-                    // Logic for Objective Questions
-                    if (['mcq', 'true_false'].includes(question.question_type)) {
-                        // Single correct option logic
+                    // MCQ: Single correct option
+                    if (question.question_type === 'mcq') {
                         if (answerData.selectedOptions && answerData.selectedOptions.length > 0) {
                             const selectedOptionId = answerData.selectedOptions[0];
                             const correctOption = question.options.find((o: any) => o.is_correct);
-
-                            // Check if selected matches correct
                             if (correctOption && correctOption.option_id === selectedOptionId) {
-                                // Prefer option marks if set, otherwise question marks
                                 const optMarks = correctOption.marks ? parseFloat(String(correctOption.marks)) : 0;
                                 const qMarks = question.marks ? parseFloat(String(question.marks)) : 0;
                                 questionMarks = optMarks || qMarks || 0;
                             }
                         }
                     }
+                    // Multiple Select: Sum of marks for selected correct options
                     else if (question.question_type === 'multiple_select') {
-                        // Sum of marks for selected correct options
-                        // (Assuming simple accumulation logic as requested: "max marks is the sum for all like that")
                         if (answerData.selectedOptions && answerData.selectedOptions.length > 0) {
                             answerData.selectedOptions.forEach((optId: number) => {
                                 const option = question.options.find((o: any) => o.option_id === optId);
@@ -108,22 +113,54 @@ export async function POST(request: NextRequest) {
                             });
                         }
                     }
+                    // True/False: Text-based comparison (form sends "True" or "False")
+                    else if (question.question_type === 'true_false') {
+                        if (answerData.text && question.correct_answer) {
+                            if (answerData.text.toLowerCase().trim() === question.correct_answer.toLowerCase().trim()) {
+                                questionMarks = question.marks ? parseFloat(String(question.marks)) : 0;
+                            }
+                        }
+                    }
+                    // Numerical: Compare parsed numbers
+                    else if (question.question_type === 'numerical') {
+                        if (answerData.text && question.correct_answer) {
+                            const studentAnswer = parseFloat(answerData.text);
+                            const correctAnswer = parseFloat(question.correct_answer);
+                            if (!isNaN(studentAnswer) && !isNaN(correctAnswer) && studentAnswer === correctAnswer) {
+                                questionMarks = question.marks ? parseFloat(String(question.marks)) : 0;
+                            }
+                        }
+                    }
 
-                    // For subjective questions, marksAwarded is null unless provided by teacher (offline grading)
-                    // If marksAwarded implies offline graded, use it
+                    // If teacher pre-graded offline (marksAwarded set), use that
                     if (answerData.marksAwarded !== undefined && answerData.marksAwarded !== null) {
                         questionMarks = parseFloat(String(answerData.marksAwarded));
                     }
 
-                    // Update marks obtained
                     marksObtained += questionMarks;
-
-                    // Update answerData to persist the calculated marks
-                    // (This modifies the object in place before saving)
                     answers[questionId].marksAwarded = questionMarks;
                 }
             }
         }
+
+        // Determine submission status:
+        // - Objective-only assessments → 'graded' (fully auto-graded)
+        // - Subjective questions fully graded (e.g. offline grading) → 'graded'
+        // - Subjective questions NOT fully graded → 'pending'
+
+        let allSubjectiveGraded = true;
+        if (hasSubjectiveQuestions) {
+            for (const qId of subjectiveQuestionIds) {
+                const ans = answers[qId];
+                // Check if answer exists and has marks
+                if (!ans || ans.marksAwarded === undefined || ans.marksAwarded === null) {
+                    allSubjectiveGraded = false;
+                    break;
+                }
+            }
+        }
+
+        const submissionStatus = (hasSubjectiveQuestions && !allSubjectiveGraded) ? 'pending' : 'graded';
         // --------------------------
 
         // Create submission record (or Upsert)
@@ -141,7 +178,8 @@ export async function POST(request: NextRequest) {
             submittedByTeacher || null,
             marksObtained,
             calculatedTotalMarks,
-            clientSubmissionId || null // Pass the client ID for Upsert
+            clientSubmissionId || null, // Pass the client ID for Upsert
+            submissionStatus // 'graded' for objective-only, 'pending' for subjective
         );
 
         const submissionId = submissionResult.submission_id;

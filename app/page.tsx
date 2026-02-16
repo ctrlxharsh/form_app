@@ -449,6 +449,57 @@ export default function HomePage() {
                 ))}
               </div>
             )}
+
+            {/* Teacher Portal - Mobile */}
+            <div className="mobile-menu-section" style={{ borderTop: '1px solid #eee', paddingTop: '16px', marginTop: '16px' }}>
+              <h4>👩‍🏫 Teacher Portal</h4>
+              {teacherSession ? (
+                <>
+                  <div style={{ marginBottom: '12px', fontSize: '14px', color: '#666' }}>
+                    {teacherSession.fullName}
+                  </div>
+                  <Link
+                    href="/grading"
+                    className="mobile-cached-item"
+                    onClick={() => setMobileMenuOpen(false)}
+                    style={{ background: '#f0f4ff', color: '#4c6ef5', fontWeight: 500 }}
+                  >
+                    📝 Grading Dashboard
+                    {pendingGradingCount > 0 && (
+                      <span style={{
+                        background: '#ff6b6b',
+                        color: 'white',
+                        borderRadius: '10px',
+                        padding: '2px 8px',
+                        fontSize: '10px',
+                        marginLeft: '8px'
+                      }}>
+                        {pendingGradingCount}
+                      </span>
+                    )}
+                  </Link>
+                  <button
+                    onClick={async () => {
+                      await logoutTeacher();
+                      setTeacherSession(null);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="logout-btn"
+                    style={{ width: '100%', marginTop: '12px' }}
+                  >
+                    🚪 Logout
+                  </button>
+                </>
+              ) : (
+                <Link
+                  href="/login"
+                  className="mobile-cached-item"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  🔐 Teacher Login
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       )}

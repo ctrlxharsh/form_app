@@ -93,11 +93,11 @@ export default function GradingPage() {
         let allSyncedData: SyncedSubmission[] = [];
         let allOfflineData: SyncedSubmission[] = [];
 
-        // 1. Load Synced/Cached Submissions from Server
+        // 1. Load Synced/Cached Submissions from Server (ALWAYS FETCH ALL to derive assessment list)
         if (online) {
             try {
-                const assessmentParam = selectedAssessment !== 'all' ? `&assessmentId=${selectedAssessment}` : '';
-                const response = await fetch(`/api/grading?teacherId=${session.userId}${assessmentParam}`);
+                // Remove assessmentId param to fetch ALL pending/graded submissions for this teacher
+                const response = await fetch(`/api/grading?teacherId=${session.userId}`);
 
                 if (response.ok) {
                     const data = await response.json();
@@ -128,66 +128,80 @@ export default function GradingPage() {
 
                     await cacheSyncedSubmissions(fetchedSubs);
                     allSyncedData = fetchedSubs;
-
-                    setAssessments(data.assessments.map((a: any) => ({
-                        assessmentId: a.assessment_id,
-                        title: a.title
-                    })));
                 } else {
                     throw new Error('Fetch failed');
                 }
             } catch (err) {
                 console.error('Online load failed, falling back to cache', err);
-                const assessmentId = selectedAssessment !== 'all' ? selectedAssessment : undefined;
-                allSyncedData = await getCachedSubmissionsForTeacher(session.userId, assessmentId);
+                allSyncedData = await getCachedSubmissionsForTeacher(session.userId);
             }
         } else {
-            const assessmentId = selectedAssessment !== 'all' ? selectedAssessment : undefined;
-            allSyncedData = await getCachedSubmissionsForTeacher(session.userId, assessmentId);
-
-            const cachedAssessments = await getCachedAssessmentsForTeacher(session.userId);
-            setAssessments(cachedAssessments);
+            allSyncedData = await getCachedSubmissionsForTeacher(session.userId);
         }
 
         // 2. Load Offline/Pending Submissions
         try {
             const { getOfflineGradingSubmissions } = await import('@/lib/db');
             allOfflineData = await getOfflineGradingSubmissions(session.userId);
-
-            if (selectedAssessment !== 'all') {
-                allOfflineData = allOfflineData.filter(s => s.assessmentId === selectedAssessment);
-            }
         } catch (e) { console.error('Error loading offline subs', e); }
 
         // 3. Get IDs of submissions that have pending local grades
         const pendingGradeSubmissionIds = await getSubmissionIdsWithPendingGrades();
 
-        // 4. Categorize submissions into 3 sections
-        // Section 1: Online Grading - synced submissions with subjective questions, WITHOUT pending local grades
-        const onlineGradingList = allSyncedData.filter(s =>
-            s.subjectiveAnswers.length > 0 && !pendingGradeSubmissionIds.has(s.submissionId)
-        );
+        // 4. Combine all data to derive the "Active Assessments" list
+        const allRelevantSubmissions = [...allSyncedData, ...allOfflineData];
 
-        // Section 2: Can Grade Offline - offline submissions WITHOUT pending local grades
-        const canGradeOfflineList = allOfflineData.filter(s =>
-            !pendingGradeSubmissionIds.has(s.submissionId)
-        );
+        // Create a map of assessmentId -> Assessment to deduplicate
+        const relevantAssessmentsMap = new Map<number, string>();
+        allRelevantSubmissions.forEach(sub => {
+            // Only include if it has subjective answers or is pending sync/offline
+            if (sub.subjectiveAnswers.length > 0 || pendingGradeSubmissionIds.has(sub.submissionId)) {
+                relevantAssessmentsMap.set(sub.assessmentId, sub.assessmentTitle);
+            }
+        });
 
-        // Section 3: Graded Yet to Be Synced - any submission (synced or offline) WITH pending local grades
+        const relevantAssessments = Array.from(relevantAssessmentsMap.entries()).map(([id, title]) => ({
+            assessmentId: id,
+            title: title
+        })).sort((a, b) => a.title.localeCompare(b.title));
+
+        setAssessments(relevantAssessments);
+
+        // 5. Categorize submissions into 3 sections (Apply selectedAssessment filter HERE)
+        const matchesAssessment = (sub: SyncedSubmission) =>
+            selectedAssessment === 'all' || sub.assessmentId === selectedAssessment;
+
+        // Section 1: Online Grading
+        const onlineGradingList = online
+            ? allSyncedData.filter(s =>
+                matchesAssessment(s) &&
+                s.subjectiveAnswers.length > 0 &&
+                !pendingGradeSubmissionIds.has(s.submissionId) &&
+                s.status !== 'graded'
+            )
+            : [];
+
+        // Section 2: Can Grade Offline
+        const canGradeOfflineList = [
+            ...(!online ? allSyncedData.filter(s => matchesAssessment(s) && s.subjectiveAnswers.length > 0 && !pendingGradeSubmissionIds.has(s.submissionId) && s.status !== 'graded') : []),
+            ...allOfflineData.filter(s => matchesAssessment(s) && s.subjectiveAnswers.length > 0 && !pendingGradeSubmissionIds.has(s.submissionId) && s.status !== 'graded')
+        ];
+
+        // Section 3: Graded Yet to Be Synced
         const gradedPendingSyncList = [
-            ...allSyncedData.filter(s => pendingGradeSubmissionIds.has(s.submissionId)),
-            ...allOfflineData.filter(s => pendingGradeSubmissionIds.has(s.submissionId))
+            ...allSyncedData.filter(s => matchesAssessment(s) && pendingGradeSubmissionIds.has(s.submissionId)),
+            ...allOfflineData.filter(s => matchesAssessment(s) && pendingGradeSubmissionIds.has(s.submissionId)),
+            ...allOfflineData.filter(s => matchesAssessment(s) && s.subjectiveAnswers.length === 0 && !pendingGradeSubmissionIds.has(s.submissionId))
         ];
 
         setOnlineGrading(onlineGradingList);
         setCanGradeOffline(canGradeOfflineList);
         setGradedPendingSync(gradedPendingSyncList);
 
-        // 5. Initialize grades state
-        const allSubmissions = [...allSyncedData, ...allOfflineData];
+        // 6. Initialize grades state
+        const filteredAllSubmissions = [...onlineGradingList, ...canGradeOfflineList, ...gradedPendingSyncList];
         const initialGrades: Record<number, Record<number, number>> = {};
 
-        // Load local grade overrides
         let localGradesMap: Record<number, Record<number, number>> = {};
         try {
             const { db } = await import('@/lib/db');
@@ -201,16 +215,16 @@ export default function GradingPage() {
             console.error('Failed to load local grades', e);
         }
 
-        for (const sub of allSubmissions) {
+        for (const sub of filteredAllSubmissions) {
             initialGrades[sub.submissionId] = {};
             for (const ans of sub.subjectiveAnswers) {
                 const localMark = localGradesMap[sub.submissionId]?.[ans.answerId];
                 initialGrades[sub.submissionId][ans.answerId] = localMark ?? ans.marksAwarded ?? 0;
             }
         }
-        setGrades(initialGrades);
+        setGrades(prev => ({ ...prev, ...initialGrades }));
 
-        // 6. Update pending grades count
+        // 7. Update pending grades count
         setPendingGradesCount(pendingGradeSubmissionIds.size);
 
     }, [session, selectedAssessment, online]);
@@ -228,14 +242,19 @@ export default function GradingPage() {
         setSyncing(true);
         try {
             const pendingGrades = await getPendingOfflineGrades();
-            if (pendingGrades.length === 0) {
+            // Filter out offline submissions (negative IDs) - they sync with the submission itself
+            const syncableGrades = pendingGrades.filter(g => g.submissionId > 0);
+
+            if (syncableGrades.length === 0) {
+                // If we only have offline submission grades, just clear syncing state
+                // They will sync when the submission syncs
                 setSyncing(false);
                 return;
             }
 
             // Group grades by submission
             const gradesBySubmission: Record<number, Record<number, number>> = {};
-            for (const grade of pendingGrades) {
+            for (const grade of syncableGrades) {
                 if (!gradesBySubmission[grade.submissionId]) {
                     gradesBySubmission[grade.submissionId] = {};
                 }
@@ -252,8 +271,29 @@ export default function GradingPage() {
             });
 
             if (response.ok) {
-                await markGradesAsSynced(pendingGrades.map(g => g.id!));
-                setPendingGradesCount(0);
+                // Update local status to 'graded' so they disappear from pending list
+                const { db } = await import('@/lib/db');
+                const syncedIds = Object.keys(gradesBySubmission).map(Number);
+
+                // Only update synced submissions (positive IDs)
+                for (const subId of syncedIds) {
+                    if (subId > 0) {
+                        try {
+                            await db.syncedSubmissions.update(subId, { status: 'graded' });
+                        } catch (e) {
+                            console.error('Failed to update local status', e);
+                        }
+                    }
+                }
+
+                // Mark only the synced grades as synced
+                await markGradesAsSynced(syncableGrades.map(g => g.id!));
+
+                // Recalculate pending count based on remaining offline grades
+                const remaining = await getPendingOfflineGrades();
+                const uniqueSubmissions = new Set(remaining.map(g => g.submissionId));
+                setPendingGradesCount(uniqueSubmissions.size);
+
                 setSaveMessage('Grades synced successfully!');
                 await loadSubmissions();
             }
@@ -266,8 +306,17 @@ export default function GradingPage() {
 
     // Auto-sync when coming online
     useEffect(() => {
-        if (online && passwordVerified && pendingGradesCount > 0) {
-            syncPendingGrades();
+        if (online && passwordVerified) {
+            if (pendingGradesCount > 0) {
+                syncPendingGrades();
+            }
+
+            // Also trigger full background sync (for offline submissions)
+            import('@/lib/sync').then(({ triggerSync }) => {
+                triggerSync().catch(e => console.error('Background sync failed', e));
+                // Reload submissions after a short delay to reflect changes
+                setTimeout(loadSubmissions, 2000);
+            });
         }
     }, [online, passwordVerified, pendingGradesCount, syncPendingGrades]);
 
@@ -329,7 +378,7 @@ export default function GradingPage() {
         }
     };
 
-    // Mark all submissions as graded (auto-grade objective questions)
+    // Mark all submissions as graded (auto-grade objective questions) — ONLINE
     const handleMarkAsGraded = async () => {
         if (!session || !online) return;
         setSaving(true);
@@ -348,12 +397,53 @@ export default function GradingPage() {
 
             if (response.ok) {
                 const data = await response.json();
+
+                // Update local status to 'graded'
+                const { db } = await import('@/lib/db');
+                for (const subId of submissionIds) {
+                    await db.syncedSubmissions.update(subId, { status: 'graded' });
+                }
+
                 setSaveMessage(`${data.graded} submissions marked as graded!`);
                 await loadSubmissions();
             } else {
                 throw new Error('Failed to mark as graded');
             }
         } catch {
+            setSaveMessage('Failed to mark as graded');
+        } finally {
+            setSaving(false);
+            setTimeout(() => setSaveMessage(null), 3000);
+        }
+    };
+
+    // Mark offline submissions as graded — saves all grades locally and moves to "Graded Pending Sync"
+    const handleMarkOfflineAsGraded = async () => {
+        if (!session) return;
+        setSaving(true);
+        setSaveMessage(null);
+
+        try {
+            // For each submission in "Can Grade Offline", ensure all subjective answers have grades saved
+            for (const sub of canGradeOffline) {
+                for (const answer of sub.subjectiveAnswers) {
+                    // Get the current grade value (from state or existing)
+                    const currentGrade = grades[sub.submissionId]?.[answer.answerId] ?? answer.marksAwarded ?? 0;
+                    // Save to IndexedDB (this creates the offlineGrade entry that moves it to pending sync)
+                    await saveOfflineGrade(sub.submissionId, answer.answerId, currentGrade);
+                }
+            }
+
+            // Update pending count
+            const pendingGrades = await getPendingOfflineGrades();
+            setPendingGradesCount(pendingGrades.length);
+
+            setSaveMessage(`${canGradeOffline.length} submissions marked as graded! Will sync when online.`);
+
+            // Reload to move them to "Graded Pending Sync" section
+            await loadSubmissions();
+        } catch (err) {
+            console.error('Failed to mark offline as graded:', err);
             setSaveMessage('Failed to mark as graded');
         } finally {
             setSaving(false);
@@ -538,6 +628,18 @@ export default function GradingPage() {
                                 grades={grades}
                                 onGradeChange={handleGradeChange}
                             />
+                            <div className="section-actions">
+                                <button
+                                    onClick={handleMarkOfflineAsGraded}
+                                    disabled={saving || syncing}
+                                    className="mark-graded-btn"
+                                >
+                                    {saving ? 'Saving...' : '✅ Mark All as Graded'}
+                                </button>
+                                <span className="action-hint">
+                                    {online ? 'Grades will sync immediately.' : 'Grades will sync when internet returns.'}
+                                </span>
+                            </div>
                         </div>
                     )}
 
@@ -710,6 +812,36 @@ export default function GradingPage() {
                 .section-banner h3 { margin: 0 0 4px; font-size: 16px; }
                 .section-banner p { margin: 0; font-size: 14px; }
                 .grading-section { margin-bottom: 32px; }
+
+                .section-actions {
+                    margin-top: 16px;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding-top: 16px;
+                    border-top: 1px dashed #eee;
+                }
+
+                .mark-graded-btn {
+                    background: #ffc107;
+                    color: #000;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .mark-graded-btn:hover { background: #e0a800; }
+                .mark-graded-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+                .action-hint {
+                    font-size: 13px;
+                    color: #666;
+                    font-style: italic;
+                }
                 
                 .grading-actions {
                     margin-top: 24px;
@@ -850,6 +982,7 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                                                                 q.maxMarks
                                                             )}
                                                             className="grade-input"
+                                                            disabled={sub.status === 'graded'}
                                                         />
                                                     </td>
                                                 );

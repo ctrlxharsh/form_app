@@ -161,7 +161,8 @@ export async function createSubmission(
   submittedByTeacher: number | null = null,
   marksObtained: number | null = null,
   totalMarks: number | null = null,
-  clientSubmissionId: string | null = null
+  clientSubmissionId: string | null = null,
+  status: string = 'pending'
 ) {
   const studentName = `${studentFirstName} ${studentLastName} `;
 
@@ -171,12 +172,12 @@ export async function createSubmission(
       INSERT INTO submissions(
         assessment_id, school_id, student_first_name, student_last_name, student_name, 
         gender, class_grade, section, selected_language, geolocation, ip_address, 
-        submitted_by_teacher, marks_obtained, total_marks, client_submission_id
+        submitted_by_teacher, marks_obtained, total_marks, client_submission_id, status
       )
       VALUES(
         ${assessmentId}, ${schoolId}, ${studentFirstName}, ${studentLastName}, ${studentName}, 
         ${gender}, ${classGrade}, ${section}, ${selectedLanguage}, ${geolocation}, ${ipAddress}, 
-        ${submittedByTeacher}, ${marksObtained}, ${totalMarks}, ${clientSubmissionId}
+        ${submittedByTeacher}, ${marksObtained}, ${totalMarks}, ${clientSubmissionId}, ${status}
       )
       ON CONFLICT (client_submission_id) 
       DO UPDATE SET
@@ -194,6 +195,7 @@ export async function createSubmission(
         submitted_by_teacher = EXCLUDED.submitted_by_teacher,
         marks_obtained = EXCLUDED.marks_obtained,
         total_marks = EXCLUDED.total_marks,
+        status = EXCLUDED.status,
         submitted_at = NOW() -- Update timestamp on re-submit
       RETURNING submission_id, (xmax = 0) AS is_insert
     `;
@@ -211,12 +213,12 @@ export async function createSubmission(
       INSERT INTO submissions(
         assessment_id, school_id, student_first_name, student_last_name, student_name, 
         gender, class_grade, section, selected_language, geolocation, ip_address, 
-        submitted_by_teacher, marks_obtained, total_marks
+        submitted_by_teacher, marks_obtained, total_marks, status
       )
       VALUES(
         ${assessmentId}, ${schoolId}, ${studentFirstName}, ${studentLastName}, ${studentName}, 
         ${gender}, ${classGrade}, ${section}, ${selectedLanguage}, ${geolocation}, ${ipAddress}, 
-        ${submittedByTeacher}, ${marksObtained}, ${totalMarks}
+        ${submittedByTeacher}, ${marksObtained}, ${totalMarks}, ${status}
       )
       RETURNING submission_id
     `;

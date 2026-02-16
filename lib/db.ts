@@ -729,8 +729,7 @@ export async function saveOfflineGrade(
  */
 export async function getPendingOfflineGrades(): Promise<OfflineGrade[]> {
     return db.offlineGrades
-        .where('synced')
-        .equals(0)  // false is stored as 0
+        .filter(g => !g.synced) // Handle false/0 correctly
         .toArray();
 }
 
@@ -748,8 +747,7 @@ export async function markGradesAsSynced(gradeIds: number[]): Promise<void> {
  */
 export async function getSubmissionIdsWithPendingGrades(): Promise<Set<number>> {
     const pendingGrades = await db.offlineGrades
-        .where('synced')
-        .equals(0)
+        .filter(g => !g.synced) // Handle false/0 correctly
         .toArray();
     return new Set(pendingGrades.map(g => g.submissionId));
 }
@@ -803,7 +801,7 @@ export async function getOfflineGradingSubmissions(teacherId: number): Promise<S
             if (!qDef) continue;
 
             // Only include subjective questions for grading
-            if (['short_answer', 'long_answer'].includes(qDef.question_type)) {
+            if (['short_answer', 'long_answer', 'image_upload'].includes(qDef.question_type)) {
                 subjectiveAnswers.push({
                     answerId: -qId, // NEGATIVE ID indicates offline/fake
                     questionId: qId,

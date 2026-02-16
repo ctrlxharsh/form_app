@@ -238,6 +238,8 @@ export async function POST(request: NextRequest) {
 
             // -------------------------------------------------------------
 
+            // -------------------------------------------------------------
+
             // Calculate marks obtained (subjective + auto-graded)
             const marksResult = await sql`
                 SELECT COALESCE(SUM(sa.marks_awarded), 0) as total
@@ -246,29 +248,19 @@ export async function POST(request: NextRequest) {
             `;
             const marksObtained = marksResult[0]?.total || 0;
 
-            // Calculate total marks from question marks
-            const totalMarksResult = await sql`
-                SELECT COALESCE(SUM(q.marks), 0) as total
-                FROM submission_answers sa
-                JOIN questions q ON sa.question_id = q.question_id
-                WHERE sa.submission_id = ${submissionId}
-            `;
-            const totalMarks = totalMarksResult[0]?.total || 0;
-
             // Determine status: Use provided status, or default to 'graded' (legacy behavior)
-            // If the user marked it as 'graded' offline, we respect that.
-            // If they left it 'pending' (partial grading), we respect that too.
             const newStatus = completionStatus && completionStatus[submissionId]
                 ? completionStatus[submissionId]
                 : 'graded';
 
-            // Update submission status and marks
+            console.log(`[Sync] Updating submission ${submissionId}: status=${newStatus}, marks=${marksObtained}`);
+
+            // Update submission status and marks (preserve total_marks from creation)
             await sql`
                 UPDATE submissions
                 SET 
                     status = ${newStatus},
                     marks_obtained = ${marksObtained},
-                    total_marks = ${totalMarks},
                     graded_by = ${graderId},
                     graded_at = NOW()
                 WHERE submission_id = ${submissionId}
@@ -344,22 +336,14 @@ export async function PATCH(request: NextRequest) {
             `;
             const marksObtained = marksResult[0]?.total || 0;
 
-            // Calculate total marks (sum of max marks from all questions in this submission's assessment)
-            const totalMarksResult = await sql`
-                SELECT COALESCE(SUM(q.marks), 0) as total
-                FROM submission_answers sa
-                JOIN questions q ON sa.question_id = q.question_id
-                WHERE sa.submission_id = ${submissionId}
-            `;
-            const totalMarks = totalMarksResult[0]?.total || 0;
+            console.log(`[OnlineGrading] Marking submission ${submissionId} as graded. Marks: ${marksObtained}`);
 
-            // Mark as graded with both marks
+            // Mark as graded with calculated marks (preserve total_marks from creation)
             await sql`
                 UPDATE submissions
                 SET 
                     status = 'graded',
                     marks_obtained = ${marksObtained},
-                    total_marks = ${totalMarks},
                     graded_by = ${graderId},
                     graded_at = NOW()
                 WHERE submission_id = ${submissionId}
