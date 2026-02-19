@@ -125,6 +125,14 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                 if (answer.rankingOrder?.length) {
                     processed.rankingOrder = answer.rankingOrder;
                 }
+                // CRITICAL FIX: Ensure questions with files are included in processedAnswers
+                // Synchronization logic depends on the key existing in the submission record
+                if (answer.file) {
+                    // We don't store the file blob here (it goes to pendingImages), 
+                    // but we MUST have the key in the object so sync knows this question was answered.
+                    // We can add a temporary marker or just ensure the object exists.
+                    processed.localImageId = -1; // Marker to indicate pending image
+                }
 
                 processedAnswers[questionId] = processed;
             }

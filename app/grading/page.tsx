@@ -962,8 +962,8 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                                                 return (
                                                     <td key={q.questionId} className="grade-cell">
                                                         <div className="answer-preview" title={ans.answerText || ''}>
-                                                            {ans.answerImageUrl ? (
-                                                                <ImageLink url={ans.answerImageUrl} />
+                                                            {ans.answerImageUrl || ans.answerImageBlob ? (
+                                                                <ImageLink url={ans.answerImageUrl} blob={ans.answerImageBlob} />
                                                             ) : (
                                                                 <span className="ans-text">
                                                                     {ans.answerText ? (ans.answerText.length > 50 ? ans.answerText.substring(0, 50) + '...' : ans.answerText) : <em style={{ color: '#999' }}>No answer</em>}
@@ -1087,7 +1087,7 @@ function GradingTable({ submissions, grades, onGradeChange }: {
     );
 }
 
-function ImageLink({ url }: { url: string }) {
+function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
     const [blobUrl, setBlobUrl] = useState<string | null>(null);
     const [isOffline, setIsOffline] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -1096,7 +1096,14 @@ function ImageLink({ url }: { url: string }) {
         const offline = !navigator.onLine;
         setIsOffline(offline);
 
-        if (offline) {
+        if (blob) {
+            const objectUrl = URL.createObjectURL(blob);
+            setBlobUrl(objectUrl);
+            setLoading(false);
+            return () => URL.revokeObjectURL(objectUrl);
+        }
+
+        if (offline && url) {
             import('@/lib/db').then(({ getCachedImageBlob }) => {
                 getCachedImageBlob(url).then(blob => {
                     if (blob) setBlobUrl(URL.createObjectURL(blob));
@@ -1115,10 +1122,10 @@ function ImageLink({ url }: { url: string }) {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
         };
-    }, [url]);
+    }, [url, blob]);
 
     // If online, use the original URL
-    if (!isOffline) {
+    if (!isOffline && url) {
         return (
             <a href={url} target="_blank" rel="noopener noreferrer" className="view-img-link">
                 📷 Open image

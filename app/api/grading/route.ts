@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
                 FROM submission_answers sa
                 JOIN questions q ON sa.question_id = q.question_id
                 WHERE sa.submission_id = ${sub.submission_id}
-                AND q.question_type IN ('short_answer', 'long_answer', 'image_upload')
+                AND q.question_type IN ('short_answer', 'long_answer', 'image_upload', 'fill_blank', 'range', 'ranking')
                 ORDER BY q.order_index
             `;
 

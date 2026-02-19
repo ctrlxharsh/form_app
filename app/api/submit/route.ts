@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
         let marksObtained = 0;
 
         // Types that require human grading
-        const SUBJECTIVE_TYPES = ['short_answer', 'long_answer', 'image_upload'];
+        const SUBJECTIVE_TYPES = ['short_answer', 'long_answer', 'image_upload', 'fill_blank', 'range', 'ranking'];
 
         // Fetch full assessment schema to get correct answers and marks
         const assessmentSchema = await getFullAssessment(assessmentId);
@@ -88,10 +88,13 @@ export async function POST(request: NextRequest) {
                 const question = questionMap.get(questionId);
 
                 if (question) {
-                    let questionMarks = 0;
+                    // CRITICAL FIX: Initialize marks as null (not 0) for subjective questions
+                    // This ensures they are marked as 'pending' grading, not 'graded' with 0 marks
+                    let questionMarks: number | null = null;
 
                     // MCQ: Single correct option
                     if (question.question_type === 'mcq') {
+                        questionMarks = 0; // Initialize to 0 for auto-graded types
                         if (answerData.selectedOptions && answerData.selectedOptions.length > 0) {
                             const selectedOptionId = answerData.selectedOptions[0];
                             const correctOption = question.options.find((o: any) => o.is_correct);
@@ -104,17 +107,19 @@ export async function POST(request: NextRequest) {
                     }
                     // Multiple Select: Sum of marks for selected correct options
                     else if (question.question_type === 'multiple_select') {
+                        questionMarks = 0;
                         if (answerData.selectedOptions && answerData.selectedOptions.length > 0) {
                             answerData.selectedOptions.forEach((optId: number) => {
                                 const option = question.options.find((o: any) => o.option_id === optId);
                                 if (option && option.is_correct) {
-                                    questionMarks += parseFloat(String(option.marks || 0));
+                                    questionMarks = (questionMarks ?? 0) + parseFloat(String(option.marks || 0));
                                 }
                             });
                         }
                     }
                     // True/False: Text-based comparison (form sends "True" or "False")
                     else if (question.question_type === 'true_false') {
+                        questionMarks = 0;
                         if (answerData.text && question.correct_answer) {
                             if (answerData.text.toLowerCase().trim() === question.correct_answer.toLowerCase().trim()) {
                                 questionMarks = question.marks ? parseFloat(String(question.marks)) : 0;
@@ -123,6 +128,7 @@ export async function POST(request: NextRequest) {
                     }
                     // Numerical: Compare parsed numbers
                     else if (question.question_type === 'numerical') {
+                        questionMarks = 0;
                         if (answerData.text && question.correct_answer) {
                             const studentAnswer = parseFloat(answerData.text);
                             const correctAnswer = parseFloat(question.correct_answer);
@@ -137,8 +143,10 @@ export async function POST(request: NextRequest) {
                         questionMarks = parseFloat(String(answerData.marksAwarded));
                     }
 
-                    marksObtained += questionMarks;
-                    answers[questionId].marksAwarded = questionMarks;
+                    if (questionMarks !== null) {
+                        marksObtained += questionMarks;
+                        answers[questionId].marksAwarded = questionMarks;
+                    }
                 }
             }
         }

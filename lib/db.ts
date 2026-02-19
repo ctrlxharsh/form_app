@@ -192,6 +192,7 @@ export interface SyncedAnswer {
     questionId: number;
     answerText: string | null;
     answerImageUrl: string | null;
+    answerImageBlob?: Blob; // Local blob for offline viewing
     marksAwarded: number | null;
     questionText: string;
     questionType: string;
@@ -795,6 +796,10 @@ export async function getOfflineGradingSubmissions(teacherId: number): Promise<S
 
         const answers = sub.answers as Record<string, any>; // Cast for access
 
+        // Get pending images for this submission
+        const pendingImages = await db.pendingImages.where('submissionLocalId').equals(sub.localId!).toArray();
+        const pendingImageMap = new Map(pendingImages.map(img => [img.questionId, img.imageBlob]));
+
         for (const [qIdStr, ansVal] of Object.entries(answers)) {
             const qId = parseInt(qIdStr);
             const qDef = qMap.get(qId);
@@ -802,11 +807,19 @@ export async function getOfflineGradingSubmissions(teacherId: number): Promise<S
 
             // Only include subjective questions for grading
             if (['short_answer', 'long_answer', 'image_upload'].includes(qDef.question_type)) {
+
+                // For image uploads, prefer local blob if available
+                let imageBlob: Blob | undefined = undefined;
+                if (qDef.question_type === 'image_upload') {
+                    imageBlob = pendingImageMap.get(qId);
+                }
+
                 subjectiveAnswers.push({
                     answerId: -qId, // NEGATIVE ID indicates offline/fake
                     questionId: qId,
                     answerText: ansVal.text || '',
                     answerImageUrl: ansVal.imageUrl || null,
+                    answerImageBlob: imageBlob,
                     marksAwarded: gradeMap.get(-qId) ?? null,
                     questionText: qDef.question_text,
                     questionType: qDef.question_type,
