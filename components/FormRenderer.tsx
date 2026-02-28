@@ -44,6 +44,17 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
         });
     }, [formData.assessment_id]);
 
+    // Warn before refresh / reload
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+            e.returnValue = "";
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    }, []);
+
     const totalSections = formData.sections.length;
     const currentSection = formData.sections[currentSectionIndex];
 
