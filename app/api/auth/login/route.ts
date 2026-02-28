@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
             FROM users u
             JOIN user_roles ur ON u.user_id = ur.user_id
             JOIN roles r ON ur.role_id = r.role_id
-            WHERE u.username = ${username} AND u.is_active = true
+            WHERE (LOWER(u.username) = LOWER(${username}) OR LOWER(u.email) = LOWER(${username})) AND u.is_active = true
             LIMIT 1
         `;
 
