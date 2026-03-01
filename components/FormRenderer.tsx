@@ -11,7 +11,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { QuestionInput, type AnswerValue } from './QuestionInput';
 import { StudentDetailsForm, type StudentDetails } from './StudentDetailsForm';
-import { deviceType, osName, browserName, mobileModel } from "react-device-detect";
+import { deviceType, osName, osVersion, browserName, browserVersion, mobileVendor, mobileModel, engineName, getUA } from "react-device-detect";
 import {
     type FormData,
     type FormSection,
@@ -221,7 +221,17 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                         geolocation: studentDetails.geolocation || null,
                         answers: processedAnswers,
                         submittedByTeacher: teacherSession?.userId || null,
-                        deviceInfo: { deviceType, osName, browserName, mobileModel }
+                        deviceInfo: {
+                            deviceType,
+                            osName,
+                            osVersion,
+                            browserName,
+                            browserVersion,
+                            mobileVendor,
+                            mobileModel,
+                            engineName,
+                            userAgent: getUA
+                        }
                     })
                 });
 
@@ -312,7 +322,17 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     answers: processedAnswers,
                     status: 'pending',
                     submittedByTeacher: teacherSession?.userId,
-                    deviceInfo: { deviceType, osName, browserName, mobileModel }
+                    deviceInfo: {
+                        deviceType,
+                        osName,
+                        osVersion,
+                        browserName,
+                        browserVersion,
+                        mobileVendor,
+                        mobileModel,
+                        engineName,
+                        userAgent: getUA
+                    }
                 }, imagesToSave);
 
                 // Don't trigger sync immediately after offline submission
