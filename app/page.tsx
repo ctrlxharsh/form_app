@@ -92,31 +92,21 @@ export default function HomePage() {
     // If online, fetch fresh data from API
     if (isOnline()) {
       try {
-        // Build URL with RBAC params if teacher is logged in
-        const params = new URLSearchParams();
+        // Use forceSyncAssessments so it goes through the cache and pruning pipeline
+        const data = await forceSyncAssessments();
+
+        let filtered = data;
         if (selectedClass !== 'all') {
-          params.set('classGrade', String(selectedClass));
+          filtered = filtered.filter(a => a.class_grade === selectedClass);
         }
 
-        // Get current session for RBAC filtering
-        const session = await getTeacherSession();
-        if (session) {
-          params.set('userId', String(session.userId));
-          params.set('role', session.role);
-        }
-
-        const url = `/api/assessments${params.toString() ? '?' + params.toString() : ''}`;
-        const response = await fetch(url);
-
-        if (response.ok) {
-          const data = await response.json();
-          setAssessments(data);
-        }
+        setAssessments(filtered);
+        await loadCachedForms();
       } catch (err) {
-        console.error('Failed to fetch assessments:', err);
+        console.error('Failed to sync assessments on load:', err);
       }
     }
-  }, [selectedClass]);
+  }, [selectedClass, loadCachedForms]);
 
   // Initial load
   useEffect(() => {
@@ -141,6 +131,7 @@ export default function HomePage() {
       setSyncStatus(status);
       if (!status.isSyncing) {
         loadPendingSubmissions();
+        loadCachedForms();
       }
     });
 
@@ -211,6 +202,7 @@ export default function HomePage() {
     try {
       const data = await forceSyncAssessments();
       setAssessments(data);
+      await loadCachedForms();
     } catch (err) {
       setError('Failed to sync assessments');
     } finally {

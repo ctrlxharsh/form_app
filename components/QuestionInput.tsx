@@ -23,6 +23,8 @@ export type AnswerValue = {
     selectedOptions?: number[];
     rankingOrder?: number[];
     file?: File;
+    imageUrl?: string;
+    localImageId?: number;
 };
 
 export function QuestionInput({ question, value, onChange, questionNumber }: QuestionInputProps) {

@@ -16,6 +16,8 @@ import {
     shouldSyncSchools,
     getPendingOfflineGrades,
     markGradesAsSynced,
+    getAllCachedForms,
+    removeCachedForm,
     type OfflineSubmission,
     type CachedSchool,
     type CachedAssessment
@@ -271,6 +273,21 @@ async function syncAssessments(): Promise<CachedAssessment[]> {
 
     const assessments: CachedAssessment[] = await response.json();
     await cacheAssessments(assessments);
+
+    // Prune inactive forms from cache
+    try {
+        const activeIds = new Set(assessments.map(a => a.assessment_id));
+        const cachedForms = await getAllCachedForms();
+        for (const form of cachedForms) {
+            if (!activeIds.has(form.formId)) {
+                console.log(`[Sync] Removing inactive form ${form.formId} from local cache`);
+                await removeCachedForm(form.formId);
+            }
+        }
+    } catch (e) {
+        console.error('[Sync] Failed to prune inactive forms:', e);
+    }
+
     return assessments;
 }
 
@@ -380,7 +397,8 @@ async function syncSubmission(submission: OfflineSubmission): Promise<void> {
                 classGrade: submission.classGrade,
                 section: submission.section,
                 answers: updatedAnswers,
-                submittedByTeacher: submission.submittedByTeacher || null
+                submittedByTeacher: submission.submittedByTeacher || null,
+                deviceInfo: submission.deviceInfo || null
             })
         });
 

@@ -11,6 +11,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { QuestionInput, type AnswerValue } from './QuestionInput';
 import { StudentDetailsForm, type StudentDetails } from './StudentDetailsForm';
+import { deviceType, osName, browserName, mobileModel } from "react-device-detect";
 import {
     type FormData,
     type FormSection,
@@ -81,6 +82,33 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
 
     // Navigate sections
     const handleNextSection = () => {
+        // Validate required questions
+        const missingRequired = currentSection.questions.filter(q => {
+            if (!q.is_required) return false;
+
+            const ans = answers[q.question_id];
+            if (!ans) return true;
+
+            const type = q.question_type;
+            if (type === 'mcq' || type === 'true_false' || type === 'multiple_select') {
+                return !ans.selectedOptions || ans.selectedOptions.length === 0;
+            } else if (type === 'ranking') {
+                return !ans.rankingOrder || ans.rankingOrder.length === 0;
+            } else if (type === 'image_upload') {
+                return !ans.file && !ans.imageUrl;
+            } else {
+                return !ans.text || ans.text.trim() === '';
+            }
+        });
+
+        if (missingRequired.length > 0) {
+            setError('Please answer all required questions before proceeding.');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
+        setError(null);
+
         if (currentSectionIndex < totalSections - 1) {
             setCurrentSectionIndex(prev => prev + 1);
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -192,7 +220,8 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                         selectedLanguage: formData.language || 'English',
                         geolocation: studentDetails.geolocation || null,
                         answers: processedAnswers,
-                        submittedByTeacher: teacherSession?.userId || null
+                        submittedByTeacher: teacherSession?.userId || null,
+                        deviceInfo: { deviceType, osName, browserName, mobileModel }
                     })
                 });
 
@@ -282,7 +311,8 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     section: studentDetails.section,
                     answers: processedAnswers,
                     status: 'pending',
-                    submittedByTeacher: teacherSession?.userId
+                    submittedByTeacher: teacherSession?.userId,
+                    deviceInfo: { deviceType, osName, browserName, mobileModel }
                 }, imagesToSave);
 
                 // Don't trigger sync immediately after offline submission
@@ -370,6 +400,13 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                 {currentSection.section_instructions && (
                     <div className="section-instructions">
                         <p>{currentSection.section_instructions}</p>
+                    </div>
+                )}
+
+                {/* Section Error Banner */}
+                {error && (
+                    <div className="error-message section-error">
+                        ⚠️ {error}
                     </div>
                 )}
 

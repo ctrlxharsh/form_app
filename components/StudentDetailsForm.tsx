@@ -114,43 +114,17 @@ export function StudentDetailsForm({ initialClassGrade = 4, onSubmit }: StudentD
 
         const newErrors: string[] = [];
 
+        const selectedSchool = schools.find(s => s.school_id === selectedSchoolId);
+        const derivedUdise = selectedSchool?.udise_code || udiseCode;
+
         if (!studentFirstName.trim()) newErrors.push('Please enter first name');
         if (!studentLastName.trim()) newErrors.push('Please enter last name');
         if (!selectedSchoolId) newErrors.push('Please select a school');
-        if (!udiseCode || udiseCode.length !== 11 || !/^\d{11}$/.test(udiseCode)) {
-            newErrors.push('UDISE code must be exactly 11 digits');
-        }
-
-        if (selectedSchoolId && udiseCode.length === 11) {
-            let isValid = false;
-
-            if (online) {
-                try {
-                    const response = await fetch('/api/schools', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ schoolId: selectedSchoolId, udiseCode })
-                    });
-                    const result = await response.json();
-                    isValid = result.valid;
-                } catch {
-                    isValid = await validateSchoolUdiseOffline(selectedSchoolId, udiseCode);
-                }
-            } else {
-                isValid = await validateSchoolUdiseOffline(selectedSchoolId, udiseCode);
-            }
-
-            if (!isValid) {
-                newErrors.push('School and UDISE code do not match');
-            }
-        }
 
         if (newErrors.length > 0) {
             setErrors(newErrors);
             return;
         }
-
-        const selectedSchool = schools.find(s => s.school_id === selectedSchoolId);
 
         onSubmit({
             studentFirstName: studentFirstName.trim(),
@@ -162,7 +136,7 @@ export function StudentDetailsForm({ initialClassGrade = 4, onSubmit }: StudentD
             schoolId: selectedSchoolId as number,
             schoolName: selectedSchool?.school_name || '',
             intervention,
-            udiseCode,
+            udiseCode: derivedUdise,
             geolocation
         });
     };
@@ -235,13 +209,13 @@ export function StudentDetailsForm({ initialClassGrade = 4, onSubmit }: StudentD
                     <label className="field-label">UDISE Code *</label>
                     <input
                         type="text"
-                        value={udiseCode}
-                        onChange={(e) => setUdiseCode(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                        value={selectedSchoolId ? schools.find(s => s.school_id === selectedSchoolId)?.udise_code || udiseCode : ''}
+                        readOnly
                         className="text-input"
-                        placeholder="Enter 11-digit code"
-                        maxLength={11}
+                        style={{ backgroundColor: '#f5f5f5', color: '#666' }}
+                        placeholder="Auto-filled from selected school"
                     />
-                    <span className="field-hint">Your school&apos;s unique 11-digit UDISE code</span>
+                    <span className="field-hint">Auto-filled based on selected school</span>
                 </div>
             </div>
 

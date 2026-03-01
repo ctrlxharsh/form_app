@@ -44,3 +44,4 @@ export function OfflineImage({ src, alt, className, ...props }: React.ImgHTMLAtt
 
     return <img src={imgSrc} alt={alt} className={className} {...props} />;
 }
+ 

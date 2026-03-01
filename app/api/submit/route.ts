@@ -22,6 +22,7 @@ interface SubmitRequest {
     section: string;
     answers: Record<number, AnswerData>;
     submittedByTeacher?: number;  // Teacher user ID if logged in
+    deviceInfo?: any;
 }
 
 interface AnswerData {
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
         const body: SubmitRequest = await request.json();
 
         // Validate required fields
-        const { assessmentId, clientSubmissionId, schoolId, studentFirstName, studentLastName, selectedLanguage, geolocation, gender, classGrade, section, answers, submittedByTeacher } = body;
+        const { assessmentId, clientSubmissionId, schoolId, studentFirstName, studentLastName, selectedLanguage, geolocation, gender, classGrade, section, answers, submittedByTeacher, deviceInfo } = body;
 
         if (!assessmentId || !schoolId || !studentFirstName || !studentLastName || !selectedLanguage || !gender || !classGrade || !section) {
             return NextResponse.json(
@@ -187,7 +188,8 @@ export async function POST(request: NextRequest) {
             marksObtained,
             calculatedTotalMarks,
             clientSubmissionId || null, // Pass the client ID for Upsert
-            submissionStatus // 'graded' for objective-only, 'pending' for subjective
+            submissionStatus, // 'graded' for objective-only, 'pending' for subjective
+            deviceInfo || null // Pass device info securely
         );
 
         const submissionId = submissionResult.submission_id;

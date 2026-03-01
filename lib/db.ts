@@ -124,6 +124,7 @@ export interface OfflineSubmission {
     serverSubmissionId: number | null;
     errorMessage: string | null;
     submittedByTeacher?: number;  // User ID of teacher who submitted
+    deviceInfo?: any; // Track device OS, browser, model
 }
 
 // ... (AnswerData, PendingImage, SyncMeta, etc. remain unchanged)
