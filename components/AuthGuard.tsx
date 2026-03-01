@@ -16,7 +16,7 @@ interface AuthGuardProps {
 }
 
 // Pages that don't require authentication
-const PUBLIC_PATHS = ['/login', '/manifest.webmanifest', '/manifest.json'];
+const PUBLIC_PATHS = ['/login', '/manifest.webmanifest'];
 
 export function AuthGuard({ children }: AuthGuardProps) {
     const router = useRouter();

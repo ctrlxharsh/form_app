@@ -1,11 +1,11 @@
-const CACHE_NAME = 'pijam-v2';
+const CACHE_NAME = 'pijam-v3';
 
 // App shell to cache on install
 const APP_SHELL = [
     '/',
     '/login',
     '/grading',
-    '/manifest.json',
+    '/manifest.webmanifest',
 ];
 
 // Install event - cache app shell

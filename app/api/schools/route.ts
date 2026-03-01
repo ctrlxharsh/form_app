@@ -22,15 +22,26 @@ export async function GET(request: NextRequest) {
         // M&E, Lead, and Admin roles see all schools (filtered by intervention)
         // Teachers see ALL their assigned schools (no intervention filter for RBAC)
         if (userId && role && !['M&E', 'Lead', 'Admin'].includes(role)) {
-            // Teacher or other roles - show ALL assigned schools (ignoring intervention filter)
-            schools = await sql`
-                SELECT DISTINCT s.school_id, s.school_name, s.udise_code, 
-                       s.local_education_admin, s.state, s.district, s.intervention
-                FROM schools s
-                JOIN teacher_schools ts ON s.school_id = ts.school_id
-                WHERE ts.teacher_id = ${parseInt(userId)}
-                ORDER BY s.school_name
-            `;
+            // Teacher or other roles - show assigned schools (respecting intervention filter if provided)
+            if (intervention && ['Prototype', 'Propagate'].includes(intervention)) {
+                schools = await sql`
+                    SELECT DISTINCT s.school_id, s.school_name, s.udise_code, 
+                           s.local_education_admin, s.state, s.district, s.intervention
+                    FROM schools s
+                    JOIN teacher_schools ts ON s.school_id = ts.school_id
+                    WHERE ts.teacher_id = ${parseInt(userId)} AND s.intervention = ${intervention}
+                    ORDER BY s.school_name
+                `;
+            } else {
+                schools = await sql`
+                    SELECT DISTINCT s.school_id, s.school_name, s.udise_code, 
+                           s.local_education_admin, s.state, s.district, s.intervention
+                    FROM schools s
+                    JOIN teacher_schools ts ON s.school_id = ts.school_id
+                    WHERE ts.teacher_id = ${parseInt(userId)}
+                    ORDER BY s.school_name
+                `;
+            }
         } else if (intervention && ['Prototype', 'Propagate'].includes(intervention)) {
             // M&E/Lead with intervention filter
             schools = await sql`
