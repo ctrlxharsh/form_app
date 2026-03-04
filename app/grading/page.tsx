@@ -44,6 +44,7 @@ export default function GradingPage() {
     const [gradedPendingSync, setGradedPendingSync] = useState<SyncedSubmission[]>([]); // Locally graded, waiting to sync
     const [assessments, setAssessments] = useState<Assessment[]>([]);
     const [selectedAssessment, setSelectedAssessment] = useState<number | 'all'>('all');
+    const [selectedGrade, setSelectedGrade] = useState<number | 'all'>('all');
     const [grades, setGrades] = useState<Record<number, Record<number, number>>>({});
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -167,14 +168,15 @@ export default function GradingPage() {
 
         setAssessments(relevantAssessments);
 
-        // 5. Categorize submissions into 3 sections (Apply selectedAssessment filter HERE)
-        const matchesAssessment = (sub: SyncedSubmission) =>
-            selectedAssessment === 'all' || sub.assessmentId === selectedAssessment;
+        // 5. Categorize submissions into 3 sections (Apply filters HERE)
+        const matchesFilters = (sub: SyncedSubmission) =>
+            (selectedAssessment === 'all' || sub.assessmentId === selectedAssessment) &&
+            (selectedGrade === 'all' || sub.classGrade === selectedGrade);
 
         // Section 1: Online Grading
         const onlineGradingList = online
             ? allSyncedData.filter(s =>
-                matchesAssessment(s) &&
+                matchesFilters(s) &&
                 s.subjectiveAnswers.length > 0 &&
                 !pendingGradeSubmissionIds.has(s.submissionId) &&
                 s.status !== 'graded'
@@ -183,15 +185,15 @@ export default function GradingPage() {
 
         // Section 2: Can Grade Offline
         const canGradeOfflineList = [
-            ...(!online ? allSyncedData.filter(s => matchesAssessment(s) && s.subjectiveAnswers.length > 0 && !pendingGradeSubmissionIds.has(s.submissionId) && s.status !== 'graded') : []),
-            ...allOfflineData.filter(s => matchesAssessment(s) && s.subjectiveAnswers.length > 0 && !pendingGradeSubmissionIds.has(s.submissionId) && s.status !== 'graded')
+            ...(!online ? allSyncedData.filter(s => matchesFilters(s) && s.subjectiveAnswers.length > 0 && !pendingGradeSubmissionIds.has(s.submissionId) && s.status !== 'graded') : []),
+            ...allOfflineData.filter(s => matchesFilters(s) && s.subjectiveAnswers.length > 0 && !pendingGradeSubmissionIds.has(s.submissionId) && s.status !== 'graded')
         ];
 
         // Section 3: Graded Yet to Be Synced
         const gradedPendingSyncList = [
-            ...allSyncedData.filter(s => matchesAssessment(s) && pendingGradeSubmissionIds.has(s.submissionId)),
-            ...allOfflineData.filter(s => matchesAssessment(s) && pendingGradeSubmissionIds.has(s.submissionId)),
-            ...allOfflineData.filter(s => matchesAssessment(s) && s.subjectiveAnswers.length === 0 && !pendingGradeSubmissionIds.has(s.submissionId))
+            ...allSyncedData.filter(s => matchesFilters(s) && pendingGradeSubmissionIds.has(s.submissionId)),
+            ...allOfflineData.filter(s => matchesFilters(s) && pendingGradeSubmissionIds.has(s.submissionId)),
+            ...allOfflineData.filter(s => matchesFilters(s) && s.subjectiveAnswers.length === 0 && !pendingGradeSubmissionIds.has(s.submissionId))
         ];
 
         setOnlineGrading(onlineGradingList);
@@ -227,7 +229,7 @@ export default function GradingPage() {
         // 7. Update pending grades count
         setPendingGradesCount(pendingGradeSubmissionIds.size);
 
-    }, [session, selectedAssessment, online]);
+    }, [session, selectedAssessment, selectedGrade, online]);
 
     useEffect(() => {
         if (passwordVerified && session) {
@@ -575,8 +577,19 @@ export default function GradingPage() {
                 </div>
             </header>
 
-            {/* Filter */}
+            {/* Filters */}
             <div className="grading-filters">
+                <label>Grade:</label>
+                <select
+                    value={selectedGrade}
+                    onChange={(e) => setSelectedGrade(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                >
+                    <option value="all">All Grades</option>
+                    {[4, 5, 6, 7, 8, 9, 10].map(grade => (
+                        <option key={grade} value={grade}>Class {grade}</option>
+                    ))}
+                </select>
+
                 <label>Assessment:</label>
                 <select
                     value={selectedAssessment}

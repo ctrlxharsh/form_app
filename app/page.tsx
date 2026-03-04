@@ -16,7 +16,6 @@ import {
   getAllCachedForms,
   getLastSchoolsSyncTime,
   getPendingSubmissions,
-  getPendingGradingCount,
   type CachedAssessment,
   type CachedForm,
   type OfflineSubmission
@@ -60,7 +59,6 @@ export default function HomePage() {
   const [selectedClass, setSelectedClass] = useState<number | 'all'>('all');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [teacherSession, setTeacherSession] = useState<TeacherSession | null>(null);
-  const [pendingGradingCount, setPendingGradingCount] = useState(0);
 
   // Load cached forms
   const loadCachedForms = useCallback(async () => {
@@ -153,8 +151,7 @@ export default function HomePage() {
       await loadPendingSubmissions();
 
       if (session) {
-        const gradingCount = await getPendingGradingCount(session.userId);
-        setPendingGradingCount(gradingCount);
+        // Count removal per user request
       }
 
       if (isOnline()) {
@@ -240,6 +237,11 @@ export default function HomePage() {
     }
   } else {
     displayedAssessments = assessments;
+  }
+
+  // Apply class filter (critical for offline when deriving from cached forms)
+  if (selectedClass !== 'all') {
+    displayedAssessments = displayedAssessments.filter(a => a.class_grade === selectedClass);
   }
 
   // Group assessments by class
@@ -360,7 +362,6 @@ export default function HomePage() {
               </div>
               <Link href="/grading" className="teacher-link">
                 📝 Grading Dashboard
-                {pendingGradingCount > 0 && <span className="grading-badge">{pendingGradingCount}</span>}
               </Link>
               <button
                 onClick={async () => {
@@ -457,18 +458,6 @@ export default function HomePage() {
                     style={{ background: '#f0f4ff', color: '#4c6ef5', fontWeight: 500 }}
                   >
                     📝 Grading Dashboard
-                    {pendingGradingCount > 0 && (
-                      <span style={{
-                        background: '#ff6b6b',
-                        color: 'white',
-                        borderRadius: '10px',
-                        padding: '2px 8px',
-                        fontSize: '10px',
-                        marginLeft: '8px'
-                      }}>
-                        {pendingGradingCount}
-                      </span>
-                    )}
                   </Link>
                   <button
                     onClick={async () => {
