@@ -248,11 +248,14 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                 if (teacherSession) {
                     const { db } = await import('@/lib/db');
 
-                    // Collect all subjective answers fromformData
+                    // SUBJECTIVE types: all question types that require human grading
+                    const SUBJECTIVE_TYPES = ['short_answer', 'long_answer', 'image_upload', 'fill_blank', 'range', 'ranking'];
+
+                    // Collect all subjective answers from formData
                     const subjectiveAnswers: any[] = [];
                     for (const section of formData.sections) {
                         for (const q of section.questions) {
-                            if (['short_answer', 'long_answer', 'image_upload'].includes(q.question_type)) {
+                            if (SUBJECTIVE_TYPES.includes(q.question_type)) {
                                 const answer = answers[q.question_id];
                                 if (answer) {
                                     subjectiveAnswers.push({
@@ -280,9 +283,11 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                             submittedAt: new Date(),
                             status: 'pending',
                             marksObtained: null,
+                            totalMarks: formData.total_marks || null,
                             assessmentId: formData.assessment_id,
                             assessmentTitle: formData.title,
                             submittedByTeacher: teacherSession.userId,
+                            schoolName: studentDetails.schoolName,
                             subjectiveAnswers,
                             cachedAt: new Date()
                         });
@@ -307,10 +312,18 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                         file: answer.file!
                     }));
 
+                // Determine if this assessment has subjective questions
+                const SUBJECTIVE_TYPES = ['short_answer', 'long_answer', 'image_upload', 'fill_blank', 'range', 'ranking'];
+                const hasSubjectiveQuestions = formData.sections.some(s =>
+                    s.questions.some(q => SUBJECTIVE_TYPES.includes(q.question_type))
+                );
+
                 const localId = await saveSubmissionWithImages({
                     formId: formData.assessment_id,
                     formVersion: new Date().toISOString(),
                     schoolId: studentDetails.schoolId,
+                    schoolName: studentDetails.schoolName,
+                    assessmentTitle: formData.title,
                     studentFirstName: studentDetails.studentFirstName,
                     studentLastName: studentDetails.studentLastName,
                     selectedLanguage: formData.language || 'English',
@@ -322,6 +335,7 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     answers: processedAnswers,
                     status: 'pending',
                     submittedByTeacher: teacherSession?.userId,
+                    hasSubjectiveQuestions,
                     deviceInfo: {
                         deviceType,
                         osName,

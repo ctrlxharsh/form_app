@@ -1,8 +1,10 @@
 /**
- * Grading Page
- * 
- * Teacher portal for grading subjective questions.
- * Works offline with cached submissions.
+ * Grading Page (Redesigned)
+ *
+ * Sections:
+ *  1. Needs Grading     — pending submissions with subjective answers (online + offline)
+ *  2. Graded – Pending  — locally graded offline subs waiting to sync
+ *  3. Recent Submissions— all submissions in the last 24 h (activity feed)
  */
 
 'use client';
@@ -14,7 +16,6 @@ import { getTeacherSession, verifyStoredPassword, type TeacherSession } from '@/
 import {
     cacheSyncedSubmissions,
     getCachedSubmissionsForTeacher,
-    getCachedAssessmentsForTeacher,
     saveOfflineGrade,
     getPendingOfflineGrades,
     markGradesAsSynced,
@@ -22,12 +23,29 @@ import {
     type SyncedSubmission,
     type SyncedAnswer
 } from '@/lib/db';
-import { checkActualConnectivity } from '@/lib/sync';
+import { checkActualConnectivity, syncSpecificSubmission } from '@/lib/sync';
+import { ImagePopup } from '@/components/ImagePopup';
 
-interface Assessment {
-    assessmentId: number;
-    title: string;
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface Assessment { assessmentId: number; title: string; }
+
+interface RecentSubmission {
+    submission_id: number;
+    student_first_name: string;
+    student_last_name: string;
+    class_grade: number;
+    section: string;
+    submitted_at: string;
+    status: 'pending' | 'graded';
+    marks_obtained: number | null;
+    total_marks: number | null;
+    assessment_id: number;
+    assessment_title: string;
+    school_name: string | null;
 }
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function GradingPage() {
     const router = useRouter();
@@ -38,48 +56,38 @@ export default function GradingPage() {
     const [passwordError, setPasswordError] = useState<string | null>(null);
     const [verifying, setVerifying] = useState(false);
 
-    // 3 categories based on flowchart
-    const [onlineGrading, setOnlineGrading] = useState<SyncedSubmission[]>([]);        // Synced from server, need grading
-    const [canGradeOffline, setCanGradeOffline] = useState<SyncedSubmission[]>([]);    // Pending offline submissions
-    const [gradedPendingSync, setGradedPendingSync] = useState<SyncedSubmission[]>([]); // Locally graded, waiting to sync
+    // Grading sections
+    const [needsGrading, setNeedsGrading] = useState<SyncedSubmission[]>([]);
+    const [gradedPendingSync, setGradedPendingSync] = useState<SyncedSubmission[]>([]);
+    const [recentSubmissions, setRecentSubmissions] = useState<RecentSubmission[]>([]);
+
     const [assessments, setAssessments] = useState<Assessment[]>([]);
     const [selectedAssessment, setSelectedAssessment] = useState<number | 'all'>('all');
     const [selectedGrade, setSelectedGrade] = useState<number | 'all'>('all');
+
     const [grades, setGrades] = useState<Record<number, Record<number, number>>>({});
     const [saving, setSaving] = useState(false);
+    const [syncing, setSyncing] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
     const [online, setOnline] = useState(true);
-    const [syncing, setSyncing] = useState(false);
     const [pendingGradesCount, setPendingGradesCount] = useState(0);
 
-    // Check session
+    // ── Session + connectivity ────────────────────────────────────────────────
+
     useEffect(() => {
         async function checkSession() {
             const sess = await getTeacherSession();
-            if (!sess) {
-                router.push('/login');
-                return;
-            }
+            if (!sess) { router.push('/login'); return; }
             setSession(sess);
             setLoading(false);
         }
         checkSession();
 
-        // Online/offline detection - use robust connectivity check
         checkActualConnectivity().then(setOnline);
-
-        const handleNetworkChange = () => {
-            checkActualConnectivity().then(setOnline);
-        };
-
+        const handleNetworkChange = () => checkActualConnectivity().then(setOnline);
         window.addEventListener('online', handleNetworkChange);
         window.addEventListener('offline', handleNetworkChange);
-
-        // Periodic recheck every 15 seconds
-        const interval = setInterval(() => {
-            checkActualConnectivity().then(setOnline);
-        }, 15000);
-
+        const interval = setInterval(() => checkActualConnectivity().then(setOnline), 15000);
         return () => {
             window.removeEventListener('online', handleNetworkChange);
             window.removeEventListener('offline', handleNetworkChange);
@@ -87,22 +95,19 @@ export default function GradingPage() {
         };
     }, [router]);
 
-    // Load submissions categorized into 3 sections
+    // ── Load submissions ──────────────────────────────────────────────────────
+
     const loadSubmissions = useCallback(async () => {
         if (!session) return;
 
-        let allSyncedData: SyncedSubmission[] = [];
-        let allOfflineData: SyncedSubmission[] = [];
-
-        // 1. Load Synced/Cached Submissions from Server (ALWAYS FETCH ALL to derive assessment list)
+        // 1. Load server-synced pending submissions (Type B — have subjective answers)
+        let serverPending: SyncedSubmission[] = [];
         if (online) {
             try {
-                // Remove assessmentId param to fetch ALL pending/graded submissions for this teacher
-                const response = await fetch(`/api/grading?teacherId=${session.userId}`);
-
+                const response = await fetch(`/api/grading?teacherId=${session.userId}&status=pending`);
                 if (response.ok) {
                     const data = await response.json();
-                    const fetchedSubs: SyncedSubmission[] = data.submissions.map((sub: any) => ({
+                    serverPending = data.submissions.map((sub: any): SyncedSubmission => ({
                         submissionId: sub.submission_id,
                         studentFirstName: sub.student_first_name,
                         studentLastName: sub.student_last_name,
@@ -111,9 +116,11 @@ export default function GradingPage() {
                         submittedAt: new Date(sub.submitted_at),
                         status: sub.status,
                         marksObtained: sub.marks_obtained,
+                        totalMarks: sub.total_marks,
                         assessmentId: sub.assessment_id,
                         assessmentTitle: sub.assessment_title,
                         submittedByTeacher: session.userId,
+                        schoolName: undefined,
                         subjectiveAnswers: sub.subjectiveAnswers.map((ans: any) => ({
                             answerId: ans.answer_id,
                             questionId: ans.question_id,
@@ -126,343 +133,246 @@ export default function GradingPage() {
                         })),
                         cachedAt: new Date()
                     }));
-
-                    await cacheSyncedSubmissions(fetchedSubs);
-                    allSyncedData = fetchedSubs;
+                    await cacheSyncedSubmissions(serverPending);
                 } else {
                     throw new Error('Fetch failed');
                 }
-            } catch (err) {
-                console.error('Online load failed, falling back to cache', err);
-                allSyncedData = await getCachedSubmissionsForTeacher(session.userId);
+            } catch {
+                serverPending = await getCachedSubmissionsForTeacher(session.userId);
+                serverPending = serverPending.filter(s => s.status === 'pending');
             }
         } else {
-            allSyncedData = await getCachedSubmissionsForTeacher(session.userId);
+            serverPending = await getCachedSubmissionsForTeacher(session.userId);
+            serverPending = serverPending.filter(s => s.status === 'pending');
         }
 
-        // 2. Load Offline/Pending Submissions
+        // 2. Load offline submission pool (Type B — subjective, not yet synced to server)
+        let offlineSubjective: SyncedSubmission[] = [];
         try {
             const { getOfflineGradingSubmissions } = await import('@/lib/db');
-            allOfflineData = await getOfflineGradingSubmissions(session.userId);
+            offlineSubjective = await getOfflineGradingSubmissions(session.userId);
         } catch (e) { console.error('Error loading offline subs', e); }
 
-        // 3. Get IDs of submissions that have pending local grades
-        const pendingGradeSubmissionIds = await getSubmissionIdsWithPendingGrades();
+        // 3. Identify which submissions have been locally graded
+        const pendingGradeIds = await getSubmissionIdsWithPendingGrades();
 
-        // 4. Combine all data to derive the "Active Assessments" list
-        const allRelevantSubmissions = [...allSyncedData, ...allOfflineData];
-
-        // Create a map of assessmentId -> Assessment to deduplicate
-        const relevantAssessmentsMap = new Map<number, string>();
-        allRelevantSubmissions.forEach(sub => {
-            // Only include if it has subjective answers or is pending sync/offline
-            if (sub.subjectiveAnswers.length > 0 || pendingGradeSubmissionIds.has(sub.submissionId)) {
-                relevantAssessmentsMap.set(sub.assessmentId, sub.assessmentTitle);
-            }
-        });
-
-        const relevantAssessments = Array.from(relevantAssessmentsMap.entries()).map(([id, title]) => ({
-            assessmentId: id,
-            title: title
-        })).sort((a, b) => a.title.localeCompare(b.title));
-
-        setAssessments(relevantAssessments);
-
-        // 5. Categorize submissions into 3 sections (Apply filters HERE)
-        const matchesFilters = (sub: SyncedSubmission) =>
-            (selectedAssessment === 'all' || sub.assessmentId === selectedAssessment) &&
-            (selectedGrade === 'all' || sub.classGrade === selectedGrade);
-
-        // Section 1: Online Grading
-        const onlineGradingList = online
-            ? allSyncedData.filter(s =>
-                matchesFilters(s) &&
-                s.subjectiveAnswers.length > 0 &&
-                !pendingGradeSubmissionIds.has(s.submissionId) &&
-                s.status !== 'graded'
+        // 4. Build "Needs Grading": server-pending + offline-ungraded subjective
+        const allNeedsGrading: SyncedSubmission[] = [
+            ...serverPending.filter(s => s.subjectiveAnswers.length > 0),
+            ...offlineSubjective.filter(s =>
+                s.subjectiveAnswers.length > 0 && !pendingGradeIds.has(s.submissionId)
             )
-            : [];
+        ].filter(s =>
+            (selectedAssessment === 'all' || s.assessmentId === selectedAssessment) &&
+            (selectedGrade === 'all' || s.classGrade === selectedGrade)
+        );
 
-        // Section 2: Can Grade Offline
-        const canGradeOfflineList = [
-            ...(!online ? allSyncedData.filter(s => matchesFilters(s) && s.subjectiveAnswers.length > 0 && !pendingGradeSubmissionIds.has(s.submissionId) && s.status !== 'graded') : []),
-            ...allOfflineData.filter(s => matchesFilters(s) && s.subjectiveAnswers.length > 0 && !pendingGradeSubmissionIds.has(s.submissionId) && s.status !== 'graded')
-        ];
+        // 5. Build "Graded – Pending Sync": offline subs with local grades not yet pushed
+        const gradedPending: SyncedSubmission[] = [
+            ...serverPending.filter(s => pendingGradeIds.has(s.submissionId)),
+            ...offlineSubjective.filter(s =>
+                s.subjectiveAnswers.length > 0 && pendingGradeIds.has(s.submissionId)
+            ),
+        ].filter(s =>
+            (selectedAssessment === 'all' || s.assessmentId === selectedAssessment) &&
+            (selectedGrade === 'all' || s.classGrade === selectedGrade)
+        );
 
-        // Section 3: Graded Yet to Be Synced
-        const gradedPendingSyncList = [
-            ...allSyncedData.filter(s => matchesFilters(s) && pendingGradeSubmissionIds.has(s.submissionId)),
-            ...allOfflineData.filter(s => matchesFilters(s) && pendingGradeSubmissionIds.has(s.submissionId)),
-            ...allOfflineData.filter(s => matchesFilters(s) && s.subjectiveAnswers.length === 0 && !pendingGradeSubmissionIds.has(s.submissionId))
-        ];
+        setNeedsGrading(allNeedsGrading);
+        setGradedPendingSync(gradedPending);
+        setPendingGradesCount(pendingGradeIds.size);
 
-        setOnlineGrading(onlineGradingList);
-        setCanGradeOffline(canGradeOfflineList);
-        setGradedPendingSync(gradedPendingSyncList);
+        // 6. Derive assessment filter list
+        const assessmentMap = new Map<number, string>();
+        [...allNeedsGrading, ...gradedPending].forEach(s => {
+            assessmentMap.set(s.assessmentId, s.assessmentTitle);
+        });
+        setAssessments(Array.from(assessmentMap.entries())
+            .map(([id, title]) => ({ assessmentId: id, title }))
+            .sort((a, b) => a.title.localeCompare(b.title))
+        );
 
-        // 6. Initialize grades state
-        const filteredAllSubmissions = [...onlineGradingList, ...canGradeOfflineList, ...gradedPendingSyncList];
-        const initialGrades: Record<number, Record<number, number>> = {};
-
-        let localGradesMap: Record<number, Record<number, number>> = {};
-        try {
-            const { db } = await import('@/lib/db');
-            const pendingGrades = await db.offlineGrades.where('synced').equals(0).toArray();
-
-            for (const pg of pendingGrades) {
-                if (!localGradesMap[pg.submissionId]) localGradesMap[pg.submissionId] = {};
-                localGradesMap[pg.submissionId][pg.answerId] = pg.marks;
-            }
-        } catch (e) {
-            console.error('Failed to load local grades', e);
+        // 7. Initialise grades state from IndexedDB and server data
+        const allSubs = [...allNeedsGrading, ...gradedPending];
+        const { db } = await import('@/lib/db');
+        const pendingGrades = await db.offlineGrades.where('synced').equals(0).toArray();
+        const localGradesMap: Record<number, Record<number, number>> = {};
+        for (const pg of pendingGrades) {
+            if (!localGradesMap[pg.submissionId]) localGradesMap[pg.submissionId] = {};
+            localGradesMap[pg.submissionId][pg.answerId] = pg.marks;
         }
 
-        for (const sub of filteredAllSubmissions) {
+        const initialGrades: Record<number, Record<number, number>> = {};
+        for (const sub of allSubs) {
             initialGrades[sub.submissionId] = {};
             for (const ans of sub.subjectiveAnswers) {
-                const localMark = localGradesMap[sub.submissionId]?.[ans.answerId];
-                initialGrades[sub.submissionId][ans.answerId] = localMark ?? ans.marksAwarded ?? 0;
+                const local = localGradesMap[sub.submissionId]?.[ans.answerId];
+                initialGrades[sub.submissionId][ans.answerId] = local ?? ans.marksAwarded ?? 0;
             }
         }
         setGrades(prev => ({ ...prev, ...initialGrades }));
-
-        // 7. Update pending grades count
-        setPendingGradesCount(pendingGradeSubmissionIds.size);
-
     }, [session, selectedAssessment, selectedGrade, online]);
+
+    // ── Load recent submissions (activity feed) ───────────────────────────────
+
+    const loadRecentSubmissions = useCallback(async () => {
+        if (!session) return;
+
+        if (online) {
+            try {
+                const res = await fetch(`/api/grading?teacherId=${session.userId}&recent=true`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setRecentSubmissions(data.submissions);
+                    // Cache for offline
+                    try {
+                        localStorage.setItem(
+                            `recent_submissions_${session.userId}`,
+                            JSON.stringify({ data: data.submissions, cachedAt: Date.now() })
+                        );
+                    } catch {/* ignore */}
+                    return;
+                }
+            } catch {/* fall through to cache */}
+        }
+
+        // Offline: read from localStorage cache
+        try {
+            const cached = localStorage.getItem(`recent_submissions_${session.userId}`);
+            if (cached) {
+                const { data } = JSON.parse(cached);
+                setRecentSubmissions(data);
+            }
+        } catch {/* ignore */}
+    }, [session, online]);
 
     useEffect(() => {
         if (passwordVerified && session) {
             loadSubmissions();
+            loadRecentSubmissions();
         }
-    }, [passwordVerified, session, loadSubmissions]);
+    }, [passwordVerified, session, loadSubmissions, loadRecentSubmissions]);
 
-    // Sync pending grades when online
-    const syncPendingGrades = useCallback(async () => {
+    // Auto-sync grades when coming online
+    useEffect(() => {
+        if (online && passwordVerified && pendingGradesCount > 0) {
+            syncAllPendingGrades();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [online, passwordVerified]);
+
+    // ── Sync logic ────────────────────────────────────────────────────────────
+
+    const syncAllPendingGrades = useCallback(async () => {
         if (!online || !session) return;
-
         setSyncing(true);
         try {
             const pendingGrades = await getPendingOfflineGrades();
-            // Filter out offline submissions (negative IDs) - they sync with the submission itself
-            const syncableGrades = pendingGrades.filter(g => g.submissionId > 0);
+            const syncableOnline = pendingGrades.filter(g => g.submissionId > 0);
+            const offlineGrades = pendingGrades.filter(g => g.submissionId < 0);
 
-            if (syncableGrades.length === 0) {
-                // If we only have offline submission grades, just clear syncing state
-                // They will sync when the submission syncs
-                setSyncing(false);
-                return;
+            if (syncableOnline.length === 0 && offlineGrades.length === 0) return;
+
+            // 1. Sync offline-origin submissions that have been graded
+            const offlineLocalIds = new Set(offlineGrades.map(g => Math.abs(g.submissionId)));
+            for (const localId of offlineLocalIds) {
+                try { await syncSpecificSubmission(localId); }
+                catch (e) { console.error('Failed to sync offline sub', localId, e); }
             }
 
-            // Group grades by submission
-            const gradesBySubmission: Record<number, Record<number, number>> = {};
-            for (const grade of syncableGrades) {
-                if (!gradesBySubmission[grade.submissionId]) {
-                    gradesBySubmission[grade.submissionId] = {};
+            // 2. Sync grades for server submissions
+            if (syncableOnline.length > 0) {
+                const gradesBySubmission: Record<number, Record<number, number>> = {};
+                for (const g of syncableOnline) {
+                    if (!gradesBySubmission[g.submissionId]) gradesBySubmission[g.submissionId] = {};
+                    gradesBySubmission[g.submissionId][g.answerId] = g.marks;
                 }
-                gradesBySubmission[grade.submissionId][grade.answerId] = grade.marks;
-            }
 
-            const response = await fetch('/api/grading', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    grades: gradesBySubmission,
-                    graderId: session.userId
-                })
-            });
+                const response = await fetch('/api/grading', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ grades: gradesBySubmission, graderId: session.userId })
+                });
 
-            if (response.ok) {
-                // Update local status to 'graded' so they disappear from pending list
-                const { db } = await import('@/lib/db');
-                const syncedIds = Object.keys(gradesBySubmission).map(Number);
-
-                // Only update synced submissions (positive IDs)
-                for (const subId of syncedIds) {
-                    if (subId > 0) {
-                        try {
-                            await db.syncedSubmissions.update(subId, { status: 'graded' });
-                        } catch (e) {
-                            console.error('Failed to update local status', e);
-                        }
+                if (response.ok) {
+                    const { db } = await import('@/lib/db');
+                    for (const subId of Object.keys(gradesBySubmission).map(Number)) {
+                        try { await db.syncedSubmissions.update(subId, { status: 'graded' }); }
+                        catch {/* ignore */}
                     }
+                    await markGradesAsSynced(syncableOnline.map(g => g.id!));
                 }
-
-                // Mark only the synced grades as synced
-                await markGradesAsSynced(syncableGrades.map(g => g.id!));
-
-                // Recalculate pending count based on remaining offline grades
-                const remaining = await getPendingOfflineGrades();
-                const uniqueSubmissions = new Set(remaining.map(g => g.submissionId));
-                setPendingGradesCount(uniqueSubmissions.size);
-
-                setSaveMessage('Grades synced successfully!');
-                await loadSubmissions();
             }
+
+            const remaining = await getPendingOfflineGrades();
+            setPendingGradesCount(new Set(remaining.map(g => g.submissionId)).size);
+            setSaveMessage('Grades synced successfully!');
+            await loadSubmissions();
+            await loadRecentSubmissions();
         } catch (err) {
-            console.error('Failed to sync grades:', err);
+            console.error('Sync failed:', err);
+            setSaveMessage('Failed to sync some grades.');
         } finally {
             setSyncing(false);
+            setTimeout(() => setSaveMessage(null), 3000);
         }
-    }, [online, session, loadSubmissions]);
+    }, [online, session, loadSubmissions, loadRecentSubmissions]);
 
-    // Auto-sync when coming online
-    useEffect(() => {
-        if (online && passwordVerified) {
-            if (pendingGradesCount > 0) {
-                syncPendingGrades();
-            }
-
-            // Also trigger full background sync (for offline submissions)
-            import('@/lib/sync').then(({ triggerSync }) => {
-                triggerSync().catch(e => console.error('Background sync failed', e));
-                // Reload submissions after a short delay to reflect changes
-                setTimeout(loadSubmissions, 2000);
-            });
-        }
-    }, [online, passwordVerified, pendingGradesCount, syncPendingGrades]);
+    // ── Handlers ──────────────────────────────────────────────────────────────
 
     const handlePasswordVerify = async (e: React.FormEvent) => {
         e.preventDefault();
         setPasswordError(null);
         setVerifying(true);
-
         try {
             const valid = await verifyStoredPassword(password);
-            if (valid) {
-                setPasswordVerified(true);
-            } else {
-                setPasswordError('Incorrect password');
-            }
-        } catch {
-            setPasswordError('Verification failed');
-        } finally {
-            setVerifying(false);
-        }
+            if (valid) setPasswordVerified(true);
+            else setPasswordError('Incorrect password');
+        } catch { setPasswordError('Verification failed'); }
+        finally { setVerifying(false); }
     };
 
     const handleGradeChange = async (submissionId: number, answerId: number, value: number, maxMarks: number) => {
-        const clampedValue = Math.max(0, Math.min(value, maxMarks));
+        const clamped = Math.max(0, Math.min(value, maxMarks));
         setGrades(prev => ({
             ...prev,
-            [submissionId]: {
-                ...prev[submissionId],
-                [answerId]: clampedValue
-            }
+            [submissionId]: { ...prev[submissionId], [answerId]: clamped }
         }));
-
-        // Save to IndexedDB immediately
-        await saveOfflineGrade(submissionId, answerId, clampedValue);
-
-        // Update pending count
-        const pendingGrades = await getPendingOfflineGrades();
-        setPendingGradesCount(pendingGrades.length);
+        await saveOfflineGrade(submissionId, answerId, clamped);
+        const pending = await getPendingOfflineGrades();
+        setPendingGradesCount(pending.length);
     };
 
-    const handleSaveGrades = async () => {
+    const handleSaveAndSync = async () => {
         if (!session) return;
         setSaving(true);
         setSaveMessage(null);
-
         try {
             if (online) {
-                // Sync all pending grades
-                await syncPendingGrades();
+                await syncAllPendingGrades();
                 setSaveMessage('Grades saved and synced!');
             } else {
                 setSaveMessage('Grades saved locally. Will sync when online.');
             }
-        } catch {
-            setSaveMessage('Failed to save grades');
-        } finally {
+        } catch { setSaveMessage('Failed to save grades'); }
+        finally {
             setSaving(false);
             setTimeout(() => setSaveMessage(null), 3000);
         }
     };
 
-    // Mark all submissions as graded (auto-grade objective questions) — ONLINE
-    const handleMarkAsGraded = async () => {
-        if (!session || !online) return;
-        setSaving(true);
-        setSaveMessage(null);
-
-        try {
-            const submissionIds = onlineGrading.map((s: SyncedSubmission) => s.submissionId);
-            const response = await fetch('/api/grading', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    submissionIds,
-                    graderId: session.userId
-                })
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-
-                // Update local status to 'graded'
-                const { db } = await import('@/lib/db');
-                for (const subId of submissionIds) {
-                    await db.syncedSubmissions.update(subId, { status: 'graded' });
-                }
-
-                setSaveMessage(`${data.graded} submissions marked as graded!`);
-                await loadSubmissions();
-            } else {
-                throw new Error('Failed to mark as graded');
-            }
-        } catch {
-            setSaveMessage('Failed to mark as graded');
-        } finally {
-            setSaving(false);
-            setTimeout(() => setSaveMessage(null), 3000);
-        }
-    };
-
-    // Mark offline submissions as graded — saves all grades locally and moves to "Graded Pending Sync"
-    const handleMarkOfflineAsGraded = async () => {
-        if (!session) return;
-        setSaving(true);
-        setSaveMessage(null);
-
-        try {
-            // For each submission in "Can Grade Offline", ensure all subjective answers have grades saved
-            for (const sub of canGradeOffline) {
-                for (const answer of sub.subjectiveAnswers) {
-                    // Get the current grade value (from state or existing)
-                    const currentGrade = grades[sub.submissionId]?.[answer.answerId] ?? answer.marksAwarded ?? 0;
-                    // Save to IndexedDB (this creates the offlineGrade entry that moves it to pending sync)
-                    await saveOfflineGrade(sub.submissionId, answer.answerId, currentGrade);
-                }
-            }
-
-            // Update pending count
-            const pendingGrades = await getPendingOfflineGrades();
-            setPendingGradesCount(pendingGrades.length);
-
-            setSaveMessage(`${canGradeOffline.length} submissions marked as graded! Will sync when online.`);
-
-            // Reload to move them to "Graded Pending Sync" section
-            await loadSubmissions();
-        } catch (err) {
-            console.error('Failed to mark offline as graded:', err);
-            setSaveMessage('Failed to mark as graded');
-        } finally {
-            setSaving(false);
-            setTimeout(() => setSaveMessage(null), 3000);
-        }
-    };
-
+    // ── Loading / Auth screens ────────────────────────────────────────────────
 
     if (loading) {
         return (
             <div className="grading-loading">
-                <div className="loading-dots"><span></span><span></span><span></span></div>
+                <div className="loading-dots">
+                    <span /><span /><span />
+                </div>
             </div>
         );
     }
 
-    // Password verification modal
     if (!passwordVerified) {
         return (
             <div className="grading-verify-container">
@@ -470,7 +380,6 @@ export default function GradingPage() {
                     <h2>🔐 Grading Access</h2>
                     <p>Please re-enter your password to access grading</p>
                     <p className="verify-user">Logged in as: <strong>{session?.fullName}</strong></p>
-
                     <form onSubmit={handlePasswordVerify}>
                         <input
                             type="password"
@@ -484,10 +393,8 @@ export default function GradingPage() {
                             {verifying ? 'Verifying...' : 'Verify & Continue'}
                         </button>
                     </form>
-
                     <Link href="/" className="verify-back">← Back to Dashboard</Link>
                 </div>
-
                 <style jsx>{`
                     .grading-verify-container {
                         min-height: 100vh;
@@ -510,67 +417,50 @@ export default function GradingPage() {
                     .verify-card p { color: #666; margin: 0 0 8px; }
                     .verify-user { margin-bottom: 24px !important; }
                     .verify-card input {
-                        width: 100%;
-                        padding: 12px 16px;
-                        border: 1px solid #ddd;
-                        border-radius: 8px;
-                        font-size: 16px;
-                        margin-bottom: 12px;
+                        width: 100%; padding: 12px 16px;
+                        border: 1px solid #ddd; border-radius: 8px;
+                        font-size: 16px; margin-bottom: 12px; box-sizing: border-box;
                     }
-                    .verify-error {
-                        color: #c00;
-                        margin-bottom: 12px;
-                        font-size: 14px;
-                    }
+                    .verify-error { color: #c00; margin-bottom: 12px; font-size: 14px; }
                     .verify-card button {
-                        width: 100%;
-                        padding: 12px;
-                        background: #667eea;
-                        color: white;
-                        border: none;
-                        border-radius: 8px;
-                        font-size: 16px;
-                        cursor: pointer;
+                        width: 100%; padding: 12px;
+                        background: #667eea; color: white;
+                        border: none; border-radius: 8px;
+                        font-size: 16px; cursor: pointer;
                     }
-                    .verify-card button:disabled {
-                        opacity: 0.6;
-                    }
-                    .verify-back {
-                        display: inline-block;
-                        margin-top: 16px;
-                        color: #667eea;
-                        text-decoration: none;
-                    }
+                    .verify-card button:disabled { opacity: 0.6; }
+                    .verify-back { display: inline-block; margin-top: 16px; color: #667eea; text-decoration: none; }
                 `}</style>
             </div>
         );
     }
 
+    // ── Main dashboard ────────────────────────────────────────────────────────
 
+    const hasGradingWork = needsGrading.length > 0 || gradedPendingSync.length > 0;
 
     return (
         <div className="grading-container">
+            {/* Header */}
             <header className="grading-header">
                 <div>
                     <h1>📝 Grading Dashboard</h1>
-                    <p>Grade subjective questions for your submissions</p>
+                    <p>Grade subjective answers and track submissions</p>
                 </div>
                 <div className="header-actions">
                     <span className={`status-badge ${online ? 'online' : 'offline'}`}>
                         {online ? '● Online' : '○ Offline'}
                     </span>
                     {pendingGradesCount > 0 && (
-                        <span className="pending-badge">
-                            {pendingGradesCount} pending
-                        </span>
+                        <span className="pending-badge">{pendingGradesCount} pending sync</span>
                     )}
-                    {online && onlineGrading.length > 0 && (
+                    {online && (
                         <button
-                            onClick={handleMarkAsGraded}
-                            disabled={saving || syncing}
-                            className="mark-graded-btn-header"
+                            onClick={() => { loadSubmissions(); loadRecentSubmissions(); }}
+                            className="refresh-btn"
+                            disabled={syncing}
                         >
-                            ✓ Sync Grades to Database
+                            {syncing ? '⟳' : '↻'} Refresh
                         </button>
                     )}
                     <Link href="/" className="back-btn">← Dashboard</Link>
@@ -579,17 +469,16 @@ export default function GradingPage() {
 
             {/* Filters */}
             <div className="grading-filters">
-                <label>Grade:</label>
+                <label>Class:</label>
                 <select
                     value={selectedGrade}
                     onChange={(e) => setSelectedGrade(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
                 >
-                    <option value="all">All Grades</option>
-                    {[4, 5, 6, 7, 8, 9, 10].map(grade => (
-                        <option key={grade} value={grade}>Class {grade}</option>
+                    <option value="all">All Classes</option>
+                    {[4, 5, 6, 7, 8, 9, 10].map(g => (
+                        <option key={g} value={g}>Class {g}</option>
                     ))}
                 </select>
-
                 <label>Assessment:</label>
                 <select
                     value={selectedAssessment}
@@ -600,102 +489,124 @@ export default function GradingPage() {
                         <option key={a.assessmentId} value={a.assessmentId}>{a.title}</option>
                     ))}
                 </select>
-                {online && (
-                    <button onClick={loadSubmissions} className="refresh-btn" disabled={syncing}>
-                        {syncing ? '⟳' : '↻'} Refresh
-                    </button>
-                )}
             </div>
 
-            {/* 3 Sections as per flowchart */}
-            {onlineGrading.length === 0 && canGradeOffline.length === 0 && gradedPendingSync.length === 0 ? (
-                <div className="no-submissions">
-                    <p>{online ? 'No submissions found.' : 'No cached submissions. Go online to sync.'}</p>
-                </div>
-            ) : (
-                <div className="grading-groups">
-                    {/* Section 1: Online Grading */}
-                    {onlineGrading.length > 0 && (
-                        <div className="grading-section online-section">
-                            <div className="section-banner info">
-                                <h3>📝 Online Grading</h3>
-                                <p>Submissions synced from server with subjective questions to grade.</p>
-                            </div>
-                            <GradingTable
-                                submissions={onlineGrading}
-                                grades={grades}
-                                onGradeChange={handleGradeChange}
-                            />
-                        </div>
-                    )}
-
-                    {/* Section 2: Can Grade Offline */}
-                    {canGradeOffline.length > 0 && (
-                        <div className="grading-section offline-section">
-                            <div className="section-banner warning">
-                                <h3>📴 Can Grade Offline</h3>
-                                <p>Pending offline submissions - grade these locally.</p>
-                            </div>
-                            <GradingTable
-                                submissions={canGradeOffline}
-                                grades={grades}
-                                onGradeChange={handleGradeChange}
-                            />
-                            <div className="section-actions">
-                                <button
-                                    onClick={handleMarkOfflineAsGraded}
-                                    disabled={saving || syncing}
-                                    className="mark-graded-btn"
-                                >
-                                    {saving ? 'Saving...' : '✅ Mark All as Graded'}
-                                </button>
-                                <span className="action-hint">
-                                    {online ? 'Grades will sync immediately.' : 'Grades will sync when internet returns.'}
-                                </span>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Section 3: Graded Yet to Be Synced */}
-                    {gradedPendingSync.length > 0 && (
-                        <div className="grading-section pending-sync-section">
-                            <div className="section-banner success">
-                                <h3>✅ Graded - Pending Sync</h3>
-                                <p>Locally graded submissions waiting to sync to database.</p>
-                            </div>
-                            <GradingTable
-                                submissions={gradedPendingSync}
-                                grades={grades}
-                                onGradeChange={handleGradeChange}
-                            />
-                        </div>
-                    )}
+            {/* ── Section 1: Needs Grading ──────────────────────────────── */}
+            {needsGrading.length > 0 && (
+                <div className="grading-section">
+                    <div className="section-banner info">
+                        <h3>⏳ Needs Grading ({needsGrading.length})</h3>
+                        <p>These submissions have subjective answers awaiting marks. Grade and click "Save & Sync" to push to server.</p>
+                    </div>
+                    <GradingTable
+                        submissions={needsGrading}
+                        grades={grades}
+                        onGradeChange={handleGradeChange}
+                    />
                 </div>
             )}
 
-            {/* Save Button */}
-            {(onlineGrading.length > 0 || canGradeOffline.length > 0 || gradedPendingSync.length > 0) && (
+            {/* ── Section 2: Graded – Pending Sync ─────────────────────── */}
+            {gradedPendingSync.length > 0 && (
+                <div className="grading-section">
+                    <div className="section-banner success">
+                        <h3>✅ Graded – Pending Sync ({gradedPendingSync.length})</h3>
+                        <p>Locally graded. {online ? 'Click "Save & Sync" to push to server.' : 'Will auto-sync when internet returns.'}</p>
+                    </div>
+                    <GradingTable
+                        submissions={gradedPendingSync}
+                        grades={grades}
+                        onGradeChange={handleGradeChange}
+                    />
+                </div>
+            )}
+
+            {/* No grading work */}
+            {!hasGradingWork && (
+                <div className="no-submissions">
+                    <p>🎉 No pending submissions to grade.</p>
+                    <p>{online ? 'All caught up!' : 'Go online to load new submissions.'}</p>
+                </div>
+            )}
+
+            {/* Save & Sync sticky button */}
+            {hasGradingWork && (
                 <div className="grading-actions">
                     <button
-                        onClick={handleSaveGrades}
+                        onClick={handleSaveAndSync}
                         disabled={saving || syncing}
                         className="save-btn"
                     >
-                        {saving || syncing ? 'Saving...' : online ? '💾 Save & Sync Grades' : '💾 Save Locally'}
+                        {saving || syncing ? '⟳ Syncing...' : online ? '💾 Save & Sync Grades' : '💾 Save Locally'}
                     </button>
                     {saveMessage && (
-                        <span className={`save-message ${saveMessage.includes('success') || saveMessage.includes('synced') || saveMessage.includes('graded') ? 'success' : ''}`}>
+                        <span className={`save-message ${saveMessage.includes('success') || saveMessage.includes('synced') ? 'success' : ''}`}>
                             {saveMessage}
                         </span>
                     )}
                 </div>
             )}
 
+            {/* ── Section 3: Recent Submissions (Activity Feed) ─────────── */}
+            <div className="grading-section recent-section">
+                <div className="section-banner neutral">
+                    <h3>📋 Recent Submissions (Last 24h)</h3>
+                    <p>{online ? 'Live from server.' : 'Showing cached data from last sync.'}</p>
+                </div>
+                {recentSubmissions.length === 0 ? (
+                    <div className="no-submissions small">
+                        <p>No submissions in the last 24 hours.</p>
+                    </div>
+                ) : (
+                    <div className="recent-table-wrapper">
+                        <table className="recent-table">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Class</th>
+                                    <th>School</th>
+                                    <th>Assessment</th>
+                                    <th>Status</th>
+                                    <th>Score</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {recentSubmissions.map(sub => (
+                                    <tr key={sub.submission_id}>
+                                        <td className="student-name">
+                                            {sub.student_first_name} {sub.student_last_name}
+                                        </td>
+                                        <td>{sub.class_grade}{sub.section}</td>
+                                        <td className="school-name">{sub.school_name || '—'}</td>
+                                        <td className="assessment-name">{sub.assessment_title}</td>
+                                        <td>
+                                            <span className={`status-pill ${sub.status}`}>
+                                                {sub.status === 'graded' ? '✓ Graded' : '⏳ Pending'}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {sub.status === 'graded' && sub.marks_obtained !== null
+                                                ? `${sub.marks_obtained}${sub.total_marks ? '/' + sub.total_marks : ''}`
+                                                : '—'}
+                                        </td>
+                                        <td className="time-cell">
+                                            {formatRelativeTime(new Date(sub.submitted_at))}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
             <style jsx>{`
                 .grading-container {
                     max-width: 1400px;
                     margin: 0 auto;
                     padding: 24px;
+                    padding-bottom: 100px;
                 }
                 .grading-header {
                     display: flex;
@@ -707,92 +618,43 @@ export default function GradingPage() {
                 }
                 .grading-header h1 { margin: 0; }
                 .grading-header p { color: #666; margin: 4px 0 0; }
-                .header-actions {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                }
+                .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
                 .status-badge {
-                    padding: 4px 12px;
-                    border-radius: 12px;
-                    font-size: 12px;
-                    font-weight: 500;
+                    padding: 4px 12px; border-radius: 12px;
+                    font-size: 12px; font-weight: 500;
                 }
                 .status-badge.online { background: #d4edda; color: #155724; }
                 .status-badge.offline { background: #fff3cd; color: #856404; }
                 .pending-badge {
-                    padding: 4px 12px;
-                    background: #f8d7da;
-                    color: #721c24;
-                    border-radius: 12px;
-                    font-size: 12px;
+                    padding: 4px 12px; background: #f8d7da;
+                    color: #721c24; border-radius: 12px; font-size: 12px;
                 }
                 .back-btn {
-                    padding: 8px 16px;
-                    background: #f0f0f0;
-                    border-radius: 8px;
-                    text-decoration: none;
-                    color: #333;
-                }
-                .mark-graded-btn-header {
-                    padding: 10px 20px;
-                    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
-                    transition: all 0.2s ease;
-                }
-                .mark-graded-btn-header:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 6px 16px rgba(40, 167, 69, 0.4);
-                }
-                .mark-graded-btn-header:disabled {
-                    opacity: 0.6;
-                    cursor: not-allowed;
-                    transform: none;
-                }
-                .grading-filters {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    margin-bottom: 24px;
-                    flex-wrap: wrap;
-                }
-                .grading-filters select {
-                    padding: 8px 12px;
-                    border: 1px solid #ddd;
-                    border-radius: 8px;
-                    font-size: 14px;
+                    padding: 8px 16px; background: #f0f0f0;
+                    border-radius: 8px; text-decoration: none; color: #333;
                 }
                 .refresh-btn {
-                    padding: 8px 16px;
-                    background: #667eea;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    cursor: pointer;
+                    padding: 8px 16px; background: #667eea; color: white;
+                    border: none; border-radius: 8px; cursor: pointer; font-size: 14px;
                 }
                 .refresh-btn:disabled { opacity: 0.6; }
+                .grading-filters {
+                    display: flex; align-items: center; gap: 12px;
+                    margin-bottom: 24px; flex-wrap: wrap;
+                }
+                .grading-filters label { font-size: 14px; font-weight: 500; color: #555; }
+                .grading-filters select {
+                    padding: 8px 12px; border: 1px solid #ddd;
+                    border-radius: 8px; font-size: 14px;
+                }
                 .grading-loading {
-                    min-height: 100vh;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
+                    min-height: 100vh; display: flex;
+                    align-items: center; justify-content: center;
                 }
-                .loading-dots {
-                    display: flex;
-                    gap: 8px;
-                }
+                .loading-dots { display: flex; gap: 8px; }
                 .loading-dots span {
-                    width: 10px;
-                    height: 10px;
-                    background: #667eea;
-                    border-radius: 50%;
-                    animation: bounce 1.4s infinite ease-in-out both;
+                    width: 10px; height: 10px; background: #667eea;
+                    border-radius: 50%; animation: bounce 1.4s infinite ease-in-out both;
                 }
                 .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
                 .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
@@ -800,115 +662,84 @@ export default function GradingPage() {
                     0%, 80%, 100% { transform: scale(0); }
                     40% { transform: scale(1); }
                 }
-                .unsynced-section { margin-bottom: 40px; }
+                .grading-section { margin-bottom: 40px; }
+                .recent-section { margin-top: 40px; }
                 .section-banner {
-                    padding: 12px 16px;
-                    border-radius: 8px;
-                    margin-bottom: 16px;
-                    border: 1px solid transparent;
+                    padding: 12px 20px; border-radius: 10px;
+                    margin-bottom: 16px; border: 1px solid transparent;
                 }
-                .section-banner.warning {
-                    background: #fff3cd;
-                    border-color: #ffeeba;
-                    color: #856404;
-                }
-                .section-banner.info {
-                    background: #d1ecf1;
-                    border-color: #bee5eb;
-                    color: #0c5460;
-                }
-                .section-banner.success {
-                    background: #d4edda;
-                    border-color: #c3e6cb;
-                    color: #155724;
-                }
+                .section-banner.info { background: #d1ecf1; border-color: #bee5eb; color: #0c5460; }
+                .section-banner.success { background: #d4edda; border-color: #c3e6cb; color: #155724; }
+                .section-banner.neutral { background: #f8f9fa; border-color: #e0e0e0; color: #333; }
                 .section-banner h3 { margin: 0 0 4px; font-size: 16px; }
                 .section-banner p { margin: 0; font-size: 14px; }
-                .grading-section { margin-bottom: 32px; }
-
-                .section-actions {
-                    margin-top: 16px;
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    padding-top: 16px;
-                    border-top: 1px dashed #eee;
+                .no-submissions {
+                    text-align: center; padding: 60px 20px; color: #666;
+                    background: white; border-radius: 12px; border: 1px solid #eee;
                 }
-
-                .mark-graded-btn {
-                    background: #ffc107;
-                    color: #000;
-                    border: none;
-                    padding: 8px 16px;
-                    border-radius: 4px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                }
-                .mark-graded-btn:hover { background: #e0a800; }
-                .mark-graded-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-                .action-hint {
-                    font-size: 13px;
-                    color: #666;
-                    font-style: italic;
-                }
-                
+                .no-submissions.small { padding: 24px 20px; }
                 .grading-actions {
-                    margin-top: 24px;
-                    display: flex;
-                    align-items: center;
-                    gap: 16px;
-                    padding: 16px;
-                    background: white;
+                    position: sticky; bottom: 0; z-index: 10;
+                    display: flex; align-items: center; gap: 16px;
+                    padding: 16px 20px; background: white;
                     border-top: 1px solid #eee;
-                    position: sticky;
-                    bottom: 0;
-                    z-index: 10;
+                    box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
                 }
                 .save-btn {
-                    padding: 12px 24px;
-                    background: #667eea;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 16px;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
+                    padding: 12px 28px; background: linear-gradient(135deg, #667eea, #764ba2);
+                    color: white; border: none; border-radius: 10px;
+                    font-size: 15px; font-weight: 600; cursor: pointer;
+                    transition: opacity 0.2s;
                 }
                 .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-                .mark-graded-btn {
-                    padding: 12px 24px;
-                    background: #28a745;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 16px;
-                    cursor: pointer;
-                }
-                .mark-graded-btn:hover { background: #218838; }
-                .mark-graded-btn:disabled { opacity: 0.6; cursor: not-allowed; }
                 .save-message { font-size: 14px; font-weight: 500; }
                 .save-message.success { color: #155724; }
-                .synced-section { margin-bottom: 40px; }
-                .no-submissions {
-                    text-align: center;
-                    padding: 60px 20px;
-                    color: #666;
-                    background: white;
-                    border-radius: 12px;
-                    border: 1px solid #eee;
+                /* Recent table */
+                .recent-table-wrapper {
+                    overflow-x: auto; border: 1px solid #e0e0e0;
+                    border-radius: 12px; background: white;
                 }
+                .recent-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+                .recent-table th {
+                    padding: 12px 14px; background: #f8f9fa;
+                    font-weight: 600; text-align: left;
+                    border-bottom: 2px solid #e0e0e0; white-space: nowrap;
+                }
+                .recent-table td {
+                    padding: 11px 14px; border-bottom: 1px solid #f0f0f0;
+                }
+                .recent-table tr:last-child td { border-bottom: none; }
+                .recent-table tr:hover td { background: #fafafa; }
+                .student-name { font-weight: 500; color: #222; white-space: nowrap; }
+                .school-name { color: #555; max-width: 160px; }
+                .assessment-name { max-width: 180px; color: #333; }
+                .time-cell { color: #888; font-size: 13px; white-space: nowrap; }
+                .status-pill {
+                    display: inline-block; padding: 3px 10px;
+                    border-radius: 12px; font-size: 12px; font-weight: 500;
+                    white-space: nowrap;
+                }
+                .status-pill.graded { background: #d4edda; color: #155724; }
+                .status-pill.pending { background: #fff3cd; color: #856404; }
             `}</style>
         </div>
     );
 }
 
-// Extracted Grading Table Component
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatRelativeTime(date: Date): string {
+    const diff = Date.now() - date.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return date.toLocaleDateString();
+}
+
+// ─── GradingTable Component ───────────────────────────────────────────────────
+
 function GradingTable({ submissions, grades, onGradeChange }: {
     submissions: SyncedSubmission[];
     grades: Record<number, Record<number, number>>;
@@ -916,20 +747,22 @@ function GradingTable({ submissions, grades, onGradeChange }: {
 }) {
     if (submissions.length === 0) return null;
 
+    // Group by assessment title
+    const groups = submissions.reduce((acc, sub) => {
+        if (!acc[sub.assessmentTitle]) acc[sub.assessmentTitle] = [];
+        acc[sub.assessmentTitle].push(sub);
+        return acc;
+    }, {} as Record<string, SyncedSubmission[]>);
+
     return (
         <div className="grading-groups">
-            {Object.entries(
-                submissions.reduce((groups, sub) => {
-                    if (!groups[sub.assessmentTitle]) groups[sub.assessmentTitle] = [];
-                    groups[sub.assessmentTitle].push(sub);
-                    return groups;
-                }, {} as Record<string, typeof submissions>)
-            ).map(([title, groupSubmissions]) => {
-                const groupQuestions: { questionId: number; questionText: string; maxMarks: number }[] = [];
-                for (const sub of groupSubmissions) {
+            {Object.entries(groups).map(([title, subs]) => {
+                // Collect unique questions across this assessment group
+                const questions: { questionId: number; questionText: string; maxMarks: number }[] = [];
+                for (const sub of subs) {
                     for (const ans of sub.subjectiveAnswers) {
-                        if (!groupQuestions.find(q => q.questionId === ans.questionId)) {
-                            groupQuestions.push({
+                        if (!questions.find(q => q.questionId === ans.questionId)) {
+                            questions.push({
                                 questionId: ans.questionId,
                                 questionText: ans.questionText,
                                 maxMarks: ans.maxMarks
@@ -946,32 +779,34 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                                 <thead>
                                     <tr>
                                         <th className="sticky-col">Student</th>
-                                        <th>Status</th>
-                                        {groupQuestions.map(q => (
+                                        {questions.map(q => (
                                             <th key={q.questionId} title={q.questionText}>
-                                                {q.questionText.substring(0, 30)}...
+                                                {q.questionText.length > 28
+                                                    ? q.questionText.substring(0, 28) + '…'
+                                                    : q.questionText}
                                                 <br />
-                                                <small>(max: {q.maxMarks})</small>
+                                                <small style={{ fontWeight: 'normal', color: '#888' }}>
+                                                    max {q.maxMarks}
+                                                </small>
                                             </th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {groupSubmissions.map(sub => (
+                                    {subs.map(sub => (
                                         <tr key={sub.submissionId}>
-                                            <td className="sticky-col">
-                                                {sub.studentFirstName} {sub.studentLastName}
-                                                <br />
-                                                <small>{sub.classGrade}{sub.section}</small>
+                                            <td className="sticky-col student-cell">
+                                                <div className="student-name">
+                                                    {sub.studentFirstName} {sub.studentLastName}
+                                                </div>
+                                                <div className="student-meta">
+                                                    Class {sub.classGrade}{sub.section}
+                                                    {sub.schoolName && ` · ${sub.schoolName}`}
+                                                </div>
                                             </td>
-                                            <td>
-                                                <span className={`status-badge ${sub.status}`}>
-                                                    {sub.status === 'graded' ? '✓ Graded' : '⏳ Pending'}
-                                                </span>
-                                            </td>
-                                            {groupQuestions.map(q => {
+                                            {questions.map(q => {
                                                 const ans = sub.subjectiveAnswers.find(a => a.questionId === q.questionId);
-                                                if (!ans) return <td key={q.questionId}>-</td>;
+                                                if (!ans) return <td key={q.questionId}>—</td>;
                                                 return (
                                                     <td key={q.questionId} className="grade-cell">
                                                         <div className="answer-preview" title={ans.answerText || ''}>
@@ -979,7 +814,11 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                                                                 <ImageLink url={ans.answerImageUrl} blob={ans.answerImageBlob} />
                                                             ) : (
                                                                 <span className="ans-text">
-                                                                    {ans.answerText ? (ans.answerText.length > 50 ? ans.answerText.substring(0, 50) + '...' : ans.answerText) : <em style={{ color: '#999' }}>No answer</em>}
+                                                                    {ans.answerText
+                                                                        ? (ans.answerText.length > 60
+                                                                            ? ans.answerText.substring(0, 60) + '…'
+                                                                            : ans.answerText)
+                                                                        : <em style={{ color: '#bbb' }}>No answer</em>}
                                                                 </span>
                                                             )}
                                                         </div>
@@ -995,7 +834,6 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                                                                 q.maxMarks
                                                             )}
                                                             className="grade-input"
-                                                            disabled={sub.status === 'graded'}
                                                         />
                                                     </td>
                                                 );
@@ -1010,100 +848,65 @@ function GradingTable({ submissions, grades, onGradeChange }: {
             })}
 
             <style jsx>{`
-                .grading-groups {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 40px;
-                }
+                .grading-groups { display: flex; flex-direction: column; gap: 32px; }
                 .assessment-group {
-                    background: white;
-                    border-radius: 12px;
-                    border: 1px solid #eee;
-                    padding: 20px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                    background: white; border-radius: 12px;
+                    border: 1px solid #e8e8e8; padding: 20px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
                 }
                 .group-title {
-                    margin: 0 0 16px;
-                    font-size: 18px;
-                    color: #333;
+                    margin: 0 0 16px; font-size: 18px; color: #222;
                     border-bottom: 2px solid #667eea;
-                    display: inline-block;
-                    padding-bottom: 4px;
+                    display: inline-block; padding-bottom: 4px;
                 }
                 .grading-table-wrapper {
-                    overflow-x: auto;
-                    border: 1px solid #ddd;
-                    border-radius: 12px;
+                    overflow-x: auto; border: 1px solid #e8e8e8; border-radius: 10px;
                 }
-                .grading-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    font-size: 14px;
-                }
+                .grading-table { width: 100%; border-collapse: collapse; font-size: 14px; }
                 .grading-table th, .grading-table td {
-                    padding: 12px;
-                    border-bottom: 1px solid #eee;
-                    text-align: left;
+                    padding: 12px 14px; border-bottom: 1px solid #f0f0f0; text-align: left;
                 }
-                .grading-table th {
-                    background: #f8f9fa;
-                    font-weight: 600;
-                    white-space: nowrap;
-                }
+                .grading-table th { background: #f8f9fa; font-weight: 600; white-space: nowrap; }
+                .grading-table tr:last-child td { border-bottom: none; }
                 .sticky-col {
-                    position: sticky;
-                    left: 0;
-                    background: white;
-                    z-index: 1;
+                    position: sticky; left: 0; background: white; z-index: 1;
+                    min-width: 140px;
                 }
-                .grading-table th.sticky-col {
-                    background: #f8f9fa;
-                }
-                .status-badge {
-                    padding: 4px 12px;
-                    border-radius: 12px;
-                    font-size: 12px;
-                    font-weight: 500;
-                }
-                .status-badge.graded { background: #d4edda; color: #155724; }
-                .status-badge.pending { background: #fff3cd; color: #856404; }
-                .grade-cell {
-                    min-width: 150px;
-                }
+                .grading-table th.sticky-col { background: #f8f9fa; }
+                .student-cell {}
+                .student-name { font-weight: 600; color: #222; }
+                .student-meta { font-size: 12px; color: #888; margin-top: 2px; }
+                .grade-cell { min-width: 160px; }
                 .grade-input {
-                    width: 60px;
-                    padding: 6px 8px;
-                    border: 1px solid #ddd;
-                    border-radius: 4px;
-                    text-align: center;
+                    width: 64px; padding: 6px 8px;
+                    border: 1px solid #ddd; border-radius: 6px;
+                    text-align: center; font-size: 14px;
                 }
+                .grade-input:focus { outline: none; border-color: #667eea; }
                 .answer-preview {
-                    margin-bottom: 8px;
-                    font-size: 13px;
-                    background: #f8f9fa;
-                    padding: 6px;
-                    border-radius: 4px;
-                    border: 1px solid #eee;
-                    max-height: 80px;
-                    overflow-y: auto;
-                    word-wrap: break-word;
+                    margin-bottom: 8px; font-size: 13px;
+                    background: #f8f9fa; padding: 6px 8px; border-radius: 6px;
+                    border: 1px solid #eee; max-height: 80px;
+                    overflow-y: auto; word-wrap: break-word;
                 }
                 .ans-text { color: #333; }
                 .view-img-link {
-                    display: inline-block;
-                    font-size: 12px;
-                    color: #007bff;
-                    text-decoration: underline;
+                    display: inline-block; font-size: 12px;
+                    color: #667eea; text-decoration: underline; cursor: pointer;
                 }
+                .view-img-link.disabled { color: #bbb; cursor: default; text-decoration: none; }
             `}</style>
         </div>
     );
 }
 
+// ─── ImageLink Component ──────────────────────────────────────────────────────
+
 function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
     const [blobUrl, setBlobUrl] = useState<string | null>(null);
     const [isOffline, setIsOffline] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [isPopupOpen, setIsPopupOpen] = useState(false);
 
     useEffect(() => {
         const offline = !navigator.onLine;
@@ -1118,8 +921,8 @@ function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
 
         if (offline && url) {
             import('@/lib/db').then(({ getCachedImageBlob }) => {
-                getCachedImageBlob(url).then(blob => {
-                    if (blob) setBlobUrl(URL.createObjectURL(blob));
+                getCachedImageBlob(url).then(b => {
+                    if (b) setBlobUrl(URL.createObjectURL(b));
                     setLoading(false);
                 });
             });
@@ -1137,29 +940,31 @@ function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
         };
     }, [url, blob]);
 
-    // If online, use the original URL
     if (!isOffline && url) {
         return (
-            <a href={url} target="_blank" rel="noopener noreferrer" className="view-img-link">
-                📷 Open image
-            </a>
+            <>
+                <a href="#" onClick={(e) => { e.preventDefault(); setIsPopupOpen(true); }} className="view-img-link">
+                    📷 Open image
+                </a>
+                {isPopupOpen && <ImagePopup src={url} onClose={() => setIsPopupOpen(false)} />}
+            </>
         );
     }
 
-    // If offline and we have cached image, use it
     if (blobUrl) {
         return (
-            <a href={blobUrl} target="_blank" rel="noopener noreferrer" className="view-img-link">
-                📷 Image (Offline)
-            </a>
+            <>
+                <a href="#" onClick={(e) => { e.preventDefault(); setIsPopupOpen(true); }} className="view-img-link">
+                    📷 Image (Offline)
+                </a>
+                {isPopupOpen && <ImagePopup src={blobUrl} onClose={() => setIsPopupOpen(false)} />}
+            </>
         );
     }
 
-    // If offline and no cache, show message
     return (
         <span className="view-img-link disabled" title="Image not available offline">
             📷 {loading ? 'Loading...' : 'Not cached'}
         </span>
     );
 }
-

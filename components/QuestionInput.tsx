@@ -10,6 +10,7 @@
 import React from 'react';
 import type { FormQuestion, QuestionOption } from '@/lib/db';
 import { OfflineImage } from './OfflineImage';
+import { ImagePopup } from './ImagePopup';
 
 interface QuestionInputProps {
     question: FormQuestion;
@@ -28,6 +29,7 @@ export type AnswerValue = {
 };
 
 export function QuestionInput({ question, value, onChange, questionNumber }: QuestionInputProps) {
+    const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
     const requiredMarker = question.is_required ? ' *' : '';
     const marks = question.marks ? ` [${question.marks} marks]` : '';
 
@@ -52,11 +54,15 @@ export function QuestionInput({ question, value, onChange, questionNumber }: Que
                             src={question.question_image_url}
                             alt="Question"
                             className="question-img"
+                            style={{ cursor: 'zoom-in' }}
+                            onClick={() => setSelectedImage(question.question_image_url!)}
                         />
                         <a
-                            href={question.question_image_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            href="#"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                setSelectedImage(question.question_image_url!);
+                            }}
                             className="image-link"
                         >
                             Open image
@@ -66,9 +72,16 @@ export function QuestionInput({ question, value, onChange, questionNumber }: Que
 
                 {/* Input based on question type */}
                 <div className="question-input-area">
-                    {renderInput(question, value, onChange, hasOptionImages)}
+                    {renderInput(question, value, onChange, hasOptionImages, setSelectedImage)}
                 </div>
             </div>
+
+            {selectedImage && (
+                <ImagePopup 
+                    src={selectedImage} 
+                    onClose={() => setSelectedImage(null)} 
+                />
+            )}
         </div>
     );
 }
@@ -77,7 +90,8 @@ function renderInput(
     question: FormQuestion,
     value: AnswerValue,
     onChange: (value: AnswerValue) => void,
-    hasOptionImages: boolean
+    hasOptionImages: boolean,
+    onImageClick: (url: string) => void
 ) {
     switch (question.question_type) {
         case 'mcq':
@@ -87,6 +101,7 @@ function renderInput(
                     value={value.selectedOptions?.[0]}
                     onChange={(optionId) => onChange({ selectedOptions: optionId ? [optionId] : [] })}
                     hasImages={hasOptionImages}
+                    onImageClick={onImageClick}
                 />
             );
 
@@ -97,6 +112,7 @@ function renderInput(
                     value={value.selectedOptions || []}
                     onChange={(selected) => onChange({ selectedOptions: selected })}
                     hasImages={hasOptionImages}
+                    onImageClick={onImageClick}
                 />
             );
 
@@ -149,6 +165,7 @@ function renderInput(
                     options={question.options}
                     value={value.rankingOrder || []}
                     onChange={(order) => onChange({ rankingOrder: order })}
+                    onImageClick={onImageClick}
                 />
             );
 
@@ -171,12 +188,14 @@ function MCQInput({
     options,
     value,
     onChange,
-    hasImages
+    hasImages,
+    onImageClick
 }: {
     options: QuestionOption[];
     value?: number;
     onChange: (optionId: number | undefined) => void;
     hasImages: boolean;
+    onImageClick: (url: string) => void;
 }) {
     return (
         <div className="input-group">
@@ -198,7 +217,17 @@ function MCQInput({
                             <span className="option-letter">{String.fromCharCode(65 + idx)}</span>
                         </div>
                         {opt.option_image_url && (
-                            <OfflineImage src={opt.option_image_url} alt={opt.option_text} className="option-image" />
+                            <OfflineImage 
+                                src={opt.option_image_url} 
+                                alt={opt.option_text} 
+                                className="option-image" 
+                                style={{ cursor: 'zoom-in' }}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onImageClick(opt.option_image_url!);
+                                }}
+                            />
                         )}
                         {opt.option_text && (
                             <span className="option-text">{opt.option_text}</span>
@@ -216,12 +245,14 @@ function MultipleSelectInput({
     options,
     value,
     onChange,
-    hasImages
+    hasImages,
+    onImageClick
 }: {
     options: QuestionOption[];
     value: number[];
     onChange: (selected: number[]) => void;
     hasImages: boolean;
+    onImageClick: (url: string) => void;
 }) {
     const toggleOption = (optionId: number) => {
         if (value.includes(optionId)) {
@@ -250,7 +281,17 @@ function MultipleSelectInput({
                             <span className="option-letter">{String.fromCharCode(65 + idx)}</span>
                         </div>
                         {opt.option_image_url && (
-                            <OfflineImage src={opt.option_image_url} alt={opt.option_text} className="option-image" />
+                            <OfflineImage 
+                                src={opt.option_image_url} 
+                                alt={opt.option_text} 
+                                className="option-image" 
+                                style={{ cursor: 'zoom-in' }}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onImageClick(opt.option_image_url!);
+                                }}
+                            />
                         )}
                         {opt.option_text && (
                             <span className="option-text">{opt.option_text}</span>
@@ -390,11 +431,13 @@ function RangeInput({
 function RankingInput({
     options,
     value,
-    onChange
+    onChange,
+    onImageClick
 }: {
     options: QuestionOption[];
     value: number[];
     onChange: (order: number[]) => void;
+    onImageClick: (url: string) => void;
 }) {
     const handleRankChange = (optionId: number, rank: number) => {
         const rankMap = new Map<number, number>();
@@ -423,7 +466,16 @@ function RankingInput({
                             <div className="ranking-content">
                                 <span className="ranking-text">{opt.option_text}</span>
                                 {opt.option_image_url && (
-                                    <OfflineImage src={opt.option_image_url} alt={opt.option_text} className="ranking-image" />
+                                    <OfflineImage 
+                                        src={opt.option_image_url} 
+                                        alt={opt.option_text} 
+                                        className="ranking-image"
+                                        style={{ cursor: 'zoom-in' }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onImageClick(opt.option_image_url!);
+                                        }}
+                                    />
                                 )}
                             </div>
                             <select

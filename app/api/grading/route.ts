@@ -27,6 +27,33 @@ export async function GET(request: NextRequest) {
             );
         }
 
+        // ?recent=true → return all submissions in last 24h for the teacher (for the activity panel)
+        const isRecent = searchParams.get('recent') === 'true';
+        if (isRecent) {
+            const recentSubmissions = await sql`
+                SELECT 
+                    s.submission_id,
+                    s.student_first_name,
+                    s.student_last_name,
+                    s.class_grade,
+                    s.section,
+                    s.submitted_at,
+                    s.status,
+                    s.marks_obtained,
+                    s.total_marks,
+                    a.assessment_id,
+                    a.title as assessment_title,
+                    sc.school_name
+                FROM submissions s
+                JOIN assessments a ON s.assessment_id = a.assessment_id
+                LEFT JOIN schools sc ON s.school_id = sc.school_id
+                WHERE s.submitted_by_teacher = ${parseInt(teacherId)}
+                AND s.submitted_at >= NOW() - INTERVAL '24 hours'
+                ORDER BY s.submitted_at DESC
+            `;
+            return NextResponse.json({ submissions: recentSubmissions });
+        }
+
         // Get status filter (default to pending only)
         const statusFilter = searchParams.get('status') || 'pending';
 

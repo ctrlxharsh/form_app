@@ -109,6 +109,7 @@ export interface OfflineSubmission {
     formId: number;           // assessment_id
     formVersion: string;
     schoolId: number;
+    schoolName?: string;      // School name for display in Recent Submissions
     studentFirstName: string;
     studentLastName: string;
     selectedLanguage: string;
@@ -125,6 +126,8 @@ export interface OfflineSubmission {
     errorMessage: string | null;
     submittedByTeacher?: number;  // User ID of teacher who submitted
     deviceInfo?: any; // Track device OS, browser, model
+    hasSubjectiveQuestions?: boolean; // true = needs teacher grading; false = auto-sync on reconnect
+    assessmentTitle?: string;  // Assessment title for display in Recent Submissions
 }
 
 // ... (AnswerData, PendingImage, SyncMeta, etc. remain unchanged)
@@ -181,9 +184,11 @@ export interface SyncedSubmission {
     submittedAt: Date;
     status: 'pending' | 'graded';
     marksObtained: number | null;
+    totalMarks?: number | null;
     assessmentId: number;
     assessmentTitle: string;
     submittedByTeacher: number;
+    schoolName?: string;      // School name for display in Recent Submissions
     subjectiveAnswers: SyncedAnswer[];
     cachedAt: Date;
 }
@@ -310,12 +315,12 @@ class FormDatabase extends Dexie {
             cachedImages: 'url'
         });
 
-        // Version 7: Add compound indexes for efficient querying
-        this.version(7).stores({
+        // Version 8: Add hasSubjectiveQuestions index to offlineSubmissions
+        this.version(8).stores({
             cachedForms: 'formId, cachedAt',
             cachedSchools: 'school_id, intervention, udise_code',
             cachedAssessments: 'assessment_id, class_grade, group_identifier',
-            offlineSubmissions: '++localId, formId, status, createdAt, submittedByTeacher',
+            offlineSubmissions: '++localId, formId, status, createdAt, submittedByTeacher, hasSubjectiveQuestions',
             pendingImages: '++localId, submissionLocalId, questionId, status',
             syncMeta: 'key',
             teacherSession: 'id',

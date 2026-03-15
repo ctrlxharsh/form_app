@@ -186,20 +186,36 @@ async function performSync(): Promise<void> {
             await syncSchools();
         }
 
-        // Step 2: Sync pending submissions
+        // Step 2: Sync pending submissions — smart logic based on type
         const pendingSubmissions = await getPendingSubmissions();
 
         for (const submission of pendingSubmissions) {
-            await syncSubmission(submission);
+            if (!submission.hasSubjectiveQuestions) {
+                // Type A: Pure objective — auto-sync immediately
+                await syncSubmission(submission);
+            } else {
+                // Type B: Has subjective questions
+                // Check if teacher has graded all subjective locally
+                const localGrades = await db.offlineGrades
+                    .where('submissionId')
+                    .equals(-submission.localId!)
+                    .toArray();
+
+                if (localGrades.length > 0) {
+                    // Teacher pre-graded offline — sync with grades
+                    await syncSubmission(submission);
+                } else {
+                    // No grades yet — skip, wait for teacher to grade it first
+                    console.log(`[Sync] Skipping offline Type B submission ${submission.localId} (not yet graded by teacher)`);
+                }
+            }
         }
 
-        // Step 3: Push local offline grades BEFORE fetching new data
-        // This prevents server state (which doesn't have our edits yet) from overwriting local work
+        // Step 3: Push local offline grades for online server submissions BEFORE fetching new data
         await pushOfflineGrades();
 
-        // Step 4: Sync recent grading data for offline use
-        // This ensures the teacher has the latest submissions to grade
-        await syncGradingData();
+        // Note: syncGradingData() is now intentionally NOT called here.
+        // The grading page fetches submissions on-demand when opened.
 
         const remainingCount = await db.offlineSubmissions
             .where('status')
@@ -363,6 +379,12 @@ export async function syncGradingData(): Promise<void> {
     } catch (error) {
         console.error('[Sync] Failed to sync grading data:', error);
     }
+}
+
+export async function syncSpecificSubmission(localId: number): Promise<void> {
+    const submission = await db.offlineSubmissions.get(localId);
+    if (!submission) return;
+    return syncSubmission(submission);
 }
 
 async function syncSubmission(submission: OfflineSubmission): Promise<void> {
