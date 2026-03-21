@@ -158,7 +158,7 @@ export default function GradingPage() {
 
         // 4. Build "Needs Grading": server-pending + offline-ungraded subjective
         const allNeedsGrading: SyncedSubmission[] = [
-            ...serverPending.filter(s => s.subjectiveAnswers.length > 0),
+            ...serverPending.filter(s => s.subjectiveAnswers.length > 0 && !pendingGradeIds.has(s.submissionId)),
             ...offlineSubjective.filter(s =>
                 s.subjectiveAnswers.length > 0 && !pendingGradeIds.has(s.submissionId)
             )
@@ -348,6 +348,16 @@ export default function GradingPage() {
         setSaving(true);
         setSaveMessage(null);
         try {
+            // Immediately mark local synced submissions as 'graded'
+            const pending = await getPendingOfflineGrades();
+            const { db } = await import('@/lib/db');
+            for (const g of pending) {
+                if (g.submissionId > 0) {
+                    try { await db.syncedSubmissions.update(g.submissionId, { status: 'graded' }); }
+                    catch { /* ignore */ }
+                }
+            }
+
             if (online) {
                 await syncAllPendingGrades();
                 setSaveMessage('Grades saved and synced!');
@@ -745,6 +755,7 @@ function GradingTable({ submissions, grades, onGradeChange }: {
     grades: Record<number, Record<number, number>>;
     onGradeChange: (subId: number, ansId: number, val: number, max: number) => void;
 }) {
+    const [selectedAnswerText, setSelectedAnswerText] = useState<string | null>(null);
     if (submissions.length === 0) return null;
 
     // Group by assessment title
@@ -809,11 +820,17 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                                                 if (!ans) return <td key={q.questionId}>—</td>;
                                                 return (
                                                     <td key={q.questionId} className="grade-cell">
-                                                        <div className="answer-preview" title={ans.answerText || ''}>
+                                                        <div className="answer-preview">
                                                             {ans.answerImageUrl || ans.answerImageBlob ? (
                                                                 <ImageLink url={ans.answerImageUrl} blob={ans.answerImageBlob} />
                                                             ) : (
-                                                                <span className="ans-text">
+                                                                <span 
+                                                                    className="ans-text clickable"
+                                                                    onClick={() => {
+                                                                        if (ans.answerText) setSelectedAnswerText(ans.answerText);
+                                                                    }}
+                                                                    title={ans.answerText ? "Click to view full answer" : ""}
+                                                                >
                                                                     {ans.answerText
                                                                         ? (ans.answerText.length > 60
                                                                             ? ans.answerText.substring(0, 60) + '…'
@@ -890,11 +907,77 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                     overflow-y: auto; word-wrap: break-word;
                 }
                 .ans-text { color: #333; }
+                .ans-text.clickable {
+                    cursor: pointer;
+                }
+                .ans-text.clickable:hover {
+                    text-decoration: underline;
+                    color: #667eea;
+                }
                 .view-img-link {
                     display: inline-block; font-size: 12px;
                     color: #667eea; text-decoration: underline; cursor: pointer;
                 }
                 .view-img-link.disabled { color: #bbb; cursor: default; text-decoration: none; }
+            `}</style>
+            
+            {selectedAnswerText && (
+                <TextPopup text={selectedAnswerText} onClose={() => setSelectedAnswerText(null)} />
+            )}
+        </div>
+    );
+}
+
+// ─── TextPopup Component ──────────────────────────────────────────────────────
+
+function TextPopup({ text, onClose }: { text: string; onClose: () => void }) {
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
+    return (
+        <div className="text-popup-overlay" onClick={onClose}>
+            <div className="text-popup-content-wrapper" onClick={e => e.stopPropagation()}>
+                <div className="text-popup-controls">
+                    <button onClick={onClose} className="close-btn" title="Close">✕</button>
+                </div>
+                <div className="text-popup-title">Full Answer Text</div>
+                <div className="text-popup-text">
+                    {text}
+                </div>
+            </div>
+            <style jsx>{`
+                .text-popup-overlay {
+                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.5); display: flex;
+                    align-items: center; justify-content: center; z-index: 10000;
+                }
+                .text-popup-content-wrapper {
+                    background: white; padding: 40px 24px 24px;
+                    border-radius: 12px; max-width: 650px; width: 90%;
+                    max-height: 85vh; overflow-y: auto; position: relative;
+                    box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+                }
+                .text-popup-controls {
+                    position: absolute; top: 12px; right: 12px;
+                }
+                .close-btn {
+                    background: none; border: none; font-size: 20px;
+                    cursor: pointer; color: #888;
+                }
+                .close-btn:hover { color: #d93025; }
+                .text-popup-title {
+                    font-size: 18px; font-weight: 500; color: #222; margin-bottom: 12px;
+                    border-bottom: 1px solid #eee; padding-bottom: 8px;
+                }
+                .text-popup-text {
+                    font-size: 15px; line-height: 1.6; color: #333;
+                    white-space: pre-wrap; word-wrap: break-word;
+                }
             `}</style>
         </div>
     );
@@ -903,68 +986,143 @@ function GradingTable({ submissions, grades, onGradeChange }: {
 // ─── ImageLink Component ──────────────────────────────────────────────────────
 
 function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
-    const [blobUrl, setBlobUrl] = useState<string | null>(null);
-    const [isOffline, setIsOffline] = useState(false);
+    const [displayUrl, setDisplayUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [isPopupOpen, setIsPopupOpen] = useState(false);
+    const [error, setError] = useState(false);
 
     useEffect(() => {
-        const offline = !navigator.onLine;
-        setIsOffline(offline);
+        let active = true;
+        let objectUrl: string | null = null;
 
-        if (blob) {
-            const objectUrl = URL.createObjectURL(blob);
-            setBlobUrl(objectUrl);
-            setLoading(false);
-            return () => URL.revokeObjectURL(objectUrl);
-        }
+        const init = async () => {
+            if (blob) {
+                objectUrl = URL.createObjectURL(blob);
+                if (active) setDisplayUrl(objectUrl);
+                setLoading(false);
+                return;
+            }
 
-        if (offline && url) {
-            import('@/lib/db').then(({ getCachedImageBlob }) => {
-                getCachedImageBlob(url).then(b => {
-                    if (b) setBlobUrl(URL.createObjectURL(b));
-                    setLoading(false);
-                });
-            });
-        } else {
-            setLoading(false);
-        }
+            if (url) {
+                // Try from cache first (for offline support)
+                try {
+                    const { db } = await import('@/lib/db');
+                    const cached = await db.cachedImages.get(url);
+                    if (cached && active) {
+                        objectUrl = URL.createObjectURL(cached.blob);
+                        setDisplayUrl(objectUrl);
+                        setLoading(false);
+                        return;
+                    }
+                } catch { /* ignore */ }
 
-        const handleOnline = () => setIsOffline(false);
-        const handleOffline = () => setIsOffline(true);
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
+                // Fallback to direct URL if online
+                if (navigator.onLine) {
+                    if (active) setDisplayUrl(url);
+                }
+                setLoading(false);
+            } else {
+                setLoading(false);
+            }
+        };
+
+        setLoading(true);
+        init();
+
         return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
+            active = false;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
     }, [url, blob]);
 
-    if (!isOffline && url) {
-        return (
-            <>
-                <a href="#" onClick={(e) => { e.preventDefault(); setIsPopupOpen(true); }} className="view-img-link">
-                    📷 Open image
-                </a>
-                {isPopupOpen && <ImagePopup src={url} onClose={() => setIsPopupOpen(false)} />}
-            </>
-        );
+    if (loading) {
+        return <span className="view-img-link loading">⌛ Loading...</span>;
     }
 
-    if (blobUrl) {
+    if (!displayUrl || error) {
         return (
-            <>
-                <a href="#" onClick={(e) => { e.preventDefault(); setIsPopupOpen(true); }} className="view-img-link">
-                    📷 Image (Offline)
-                </a>
-                {isPopupOpen && <ImagePopup src={blobUrl} onClose={() => setIsPopupOpen(false)} />}
-            </>
+            <span className="view-img-link disabled" title="Image not available offline">
+                📷 Not cached
+            </span>
         );
     }
 
     return (
-        <span className="view-img-link disabled" title="Image not available offline">
-            📷 {loading ? 'Loading...' : 'Not cached'}
-        </span>
+        <div className="thumbnail-container">
+            <div 
+                className="thumbnail-preview" 
+                onClick={() => setIsPopupOpen(true)}
+                title="Click to view full image"
+            >
+                <img 
+                    src={displayUrl} 
+                    alt="Answer thumbnail" 
+                    onError={() => setError(true)}
+                    className="thumb-img"
+                />
+                <div className="thumb-overlay">
+                    <span>🔍 View</span>
+                </div>
+            </div>
+            
+            {isPopupOpen && (
+                <ImagePopup 
+                    src={displayUrl} 
+                    alt="Answer preview"
+                    onClose={() => setIsPopupOpen(false)} 
+                />
+            )}
+
+            <style jsx>{`
+                .thumbnail-container {
+                    display: inline-block;
+                    margin-top: 4px;
+                }
+                .thumbnail-preview {
+                    position: relative;
+                    width: 100px;
+                    height: 60px;
+                    border-radius: 6px;
+                    overflow: hidden;
+                    border: 1px solid #ddd;
+                    cursor: zoom-in;
+                    background: #eee;
+                    transition: transform 0.2s, box-shadow 0.2s;
+                }
+                .thumbnail-preview:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                    border-color: #667eea;
+                }
+                .thumb-img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                }
+                .thumb-overlay {
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(102, 126, 234, 0.4);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    opacity: 0;
+                    transition: opacity 0.2s;
+                }
+                .thumbnail-preview:hover .thumb-overlay {
+                    opacity: 1;
+                }
+                .thumb-overlay span {
+                    color: white;
+                    font-size: 11px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    background: rgba(0,0,0,0.4);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                }
+                .loading { color: #888; font-style: italic; }
+            `}</style>
+        </div>
     );
 }
