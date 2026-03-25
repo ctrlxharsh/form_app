@@ -71,6 +71,7 @@ export default function GradingPage() {
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
     const [online, setOnline] = useState(true);
     const [pendingGradesCount, setPendingGradesCount] = useState(0);
+    const [showSyncWarning, setShowSyncWarning] = useState(false);
 
     // ── Session + connectivity ────────────────────────────────────────────────
 
@@ -473,6 +474,16 @@ export default function GradingPage() {
                             {syncing ? '⟳' : '↻'} Refresh
                         </button>
                     )}
+                    {hasGradingWork && (
+                        <button
+                            onClick={() => setShowSyncWarning(true)}
+                            disabled={saving || syncing}
+                            className="save-btn"
+                            style={{ padding: '8px 18px', fontSize: '14px' }}
+                        >
+                            {saving || syncing ? '⟳ Syncing...' : online ? '↻ Sync to Server' : '💾 Save Locally'}
+                        </button>
+                    )}
                     <Link href="/" className="back-btn">← Dashboard</Link>
                 </div>
             </header>
@@ -539,23 +550,7 @@ export default function GradingPage() {
                 </div>
             )}
 
-            {/* Save & Sync sticky button */}
-            {hasGradingWork && (
-                <div className="grading-actions">
-                    <button
-                        onClick={handleSaveAndSync}
-                        disabled={saving || syncing}
-                        className="save-btn"
-                    >
-                        {saving || syncing ? '⟳ Syncing...' : online ? '💾 Save & Sync Grades' : '💾 Save Locally'}
-                    </button>
-                    {saveMessage && (
-                        <span className={`save-message ${saveMessage.includes('success') || saveMessage.includes('synced') ? 'success' : ''}`}>
-                            {saveMessage}
-                        </span>
-                    )}
-                </div>
-            )}
+
 
             {/* ── Section 3: Recent Submissions (Activity Feed) ─────────── */}
             <div className="grading-section recent-section">
@@ -732,6 +727,45 @@ export default function GradingPage() {
                 .status-pill.graded { background: #d4edda; color: #155724; }
                 .status-pill.pending { background: #fff3cd; color: #856404; }
             `}</style>
+
+            {/* Save message toast */}
+            {saveMessage && (
+                <div style={{ position: 'fixed', bottom: '24px', right: '24px', background: '#155724', color: 'white', padding: '12px 20px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 999 }}>
+                    {saveMessage}
+                </div>
+            )}
+
+            {/* Sync Warning Modal */}
+            {showSyncWarning && (
+                <div
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+                    onClick={() => setShowSyncWarning(false)}
+                >
+                    <div
+                        style={{ background: 'white', borderRadius: '12px', padding: '28px', maxWidth: '420px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 style={{ margin: '0 0 12px', color: '#856404', fontSize: '1.1rem' }}>⚠️ Confirm Sync</h3>
+                        <p style={{ margin: '0 0 24px', lineHeight: 1.6, color: '#333', fontSize: '0.95rem' }}>
+                            It will sync the current records to the database and no more changes can be performed on the database for both online and offline part.
+                        </p>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => setShowSyncWarning(false)}
+                                style={{ padding: '9px 20px', border: '1px solid #ccc', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '14px' }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => { setShowSyncWarning(false); await handleSaveAndSync(); }}
+                                style={{ padding: '9px 20px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
+                            >
+                                Proceed &amp; Sync
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

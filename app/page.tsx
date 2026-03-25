@@ -331,21 +331,6 @@ export default function HomePage() {
                 </span>
               )}
             </div>
-            {online && (
-              <button
-                onClick={handleSyncAll}
-                className="sync-all-btn"
-                disabled={syncStatus?.isSyncing}
-              >
-                {syncStatus?.isSyncing ? (
-                  <>
-                    <span className="mini-spinner" /> Syncing...
-                  </>
-                ) : (
-                  '↻ Sync All'
-                )}
-              </button>
-            )}
           </div>
         )}
 
@@ -419,11 +404,6 @@ export default function HomePage() {
                     {sub.studentFirstName} {sub.studentLastName} - {sub.status}
                   </div>
                 ))}
-                {online && (
-                  <button onClick={handleSyncAll} className="mobile-sync-btn">
-                    ↻ Sync All
-                  </button>
-                )}
               </div>
             )}
 
