@@ -245,8 +245,8 @@ export async function POST(request: NextRequest) {
                 WHERE sa.question_id = q.question_id
                 AND sa.submission_id = ${submissionId}
                 AND q.question_type IN ('mcq', 'multiple_select')
-                -- Update if NULL or if we want to ensure correctness (remove check to force update)
-                AND sa.marks_awarded IS NULL 
+                AND sa.marks_awarded IS NULL
+                AND sa.selected_options IS NOT NULL
             `;
 
             // 2. Auto-grade True/False & Numerical

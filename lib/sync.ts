@@ -506,39 +506,45 @@ async function pushOfflineGrades(): Promise<void> {
         const session = await db.table('teacherSession').get(1);
         if (!session) return; // Can't sync without user ID
 
+        // Only sync grades for real server submissions (positive IDs)
+        // Negative IDs are offline-only submissions handled by syncSubmission()
+        const serverGrades = pendingGrades.filter(g => g.submissionId > 0);
+        if (serverGrades.length === 0) return;
+
         // Group by submission
         const gradesBySubmission: Record<number, Record<number, number>> = {};
-        for (const grade of pendingGrades) {
+        for (const grade of serverGrades) {
             if (!gradesBySubmission[grade.submissionId]) {
                 gradesBySubmission[grade.submissionId] = {};
             }
             gradesBySubmission[grade.submissionId][grade.answerId] = grade.marks;
         }
 
-        // Gather status for each submission
-        const completionStatus: Record<number, string> = {};
-        const submissionIds = Object.keys(gradesBySubmission).map(Number);
-
-        for (const subId of submissionIds) {
-            const sub = await db.syncedSubmissions.get(subId);
-            if (sub) {
-                completionStatus[subId] = sub.status; // 'pending' or 'graded'
-            }
-        }
-
+        // IMPORTANT: Do NOT pass completionStatus here.
+        // The local syncedSubmissions cache still has status='pending' at this point
+        // (it hasn't been updated by handleSaveAndSync yet). Passing 'pending' would
+        // cause the API to keep the DB status as 'pending' after saving marks.
+        // Omitting completionStatus makes the API default to 'graded', which is correct
+        // since we are pushing finalized grades for this submission.
         const response = await fetch('/api/grading', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 grades: gradesBySubmission,
-                completionStatus,
                 graderId: session.userId
+                // completionStatus intentionally omitted → API defaults to 'graded'
             })
         });
 
         if (response.ok) {
-            await markGradesAsSynced(pendingGrades.map(g => g.id!));
-            console.log('[Sync] Offline grades pushed:', pendingGrades.length);
+            await markGradesAsSynced(serverGrades.map(g => g.id!));
+            // Also update the local IndexedDB cache to reflect graded status
+            for (const subId of Object.keys(gradesBySubmission).map(Number)) {
+                try {
+                    await db.syncedSubmissions.update(subId, { status: 'graded' });
+                } catch { /* ignore if not in cache */ }
+            }
+            console.log('[Sync] Offline grades pushed:', serverGrades.length);
         } else {
             console.error('[Sync] Failed to push grades:', response.status);
         }

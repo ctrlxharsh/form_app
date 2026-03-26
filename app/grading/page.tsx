@@ -267,12 +267,20 @@ export default function GradingPage() {
     const syncAllPendingGrades = useCallback(async () => {
         if (!online || !session) return;
         setSyncing(true);
+        let syncError: string | null = null;
         try {
             const pendingGrades = await getPendingOfflineGrades();
             const syncableOnline = pendingGrades.filter(g => g.submissionId > 0);
             const offlineGrades = pendingGrades.filter(g => g.submissionId < 0);
 
-            if (syncableOnline.length === 0 && offlineGrades.length === 0) return;
+            if (syncableOnline.length === 0 && offlineGrades.length === 0) {
+                // No pending grades — but still refresh the UI in case background sync
+                // already processed them (and the page data is stale)
+                await loadSubmissions();
+                await loadRecentSubmissions();
+                setSaveMessage('All grades are already synced!');
+                return;
+            }
 
             // 1. Sync offline-origin submissions that have been graded
             const offlineLocalIds = new Set(offlineGrades.map(g => Math.abs(g.submissionId)));
@@ -302,20 +310,24 @@ export default function GradingPage() {
                         catch {/* ignore */}
                     }
                     await markGradesAsSynced(syncableOnline.map(g => g.id!));
+                } else {
+                    const errData = await response.json().catch(() => ({}));
+                    syncError = errData.error || `Server error (${response.status})`;
+                    console.error('Grading sync failed:', syncError);
                 }
             }
 
             const remaining = await getPendingOfflineGrades();
             setPendingGradesCount(new Set(remaining.map(g => g.submissionId)).size);
-            setSaveMessage('Grades synced successfully!');
+            setSaveMessage(syncError ? `Sync failed: ${syncError}` : 'Grades synced successfully!');
             await loadSubmissions();
             await loadRecentSubmissions();
         } catch (err) {
             console.error('Sync failed:', err);
-            setSaveMessage('Failed to sync some grades.');
+            setSaveMessage('Failed to sync grades. Please try again.');
         } finally {
             setSyncing(false);
-            setTimeout(() => setSaveMessage(null), 3000);
+            setTimeout(() => setSaveMessage(null), 4000);
         }
     }, [online, session, loadSubmissions, loadRecentSubmissions]);
 
@@ -349,7 +361,7 @@ export default function GradingPage() {
         setSaving(true);
         setSaveMessage(null);
         try {
-            // Immediately mark local synced submissions as 'graded'
+            // Optimistically mark local synced submissions as 'graded' in IndexedDB cache
             const pending = await getPendingOfflineGrades();
             const { db } = await import('@/lib/db');
             for (const g of pending) {
@@ -361,14 +373,14 @@ export default function GradingPage() {
 
             if (online) {
                 await syncAllPendingGrades();
-                setSaveMessage('Grades saved and synced!');
+                // syncAllPendingGrades sets its own saveMessage and calls loadSubmissions()
             } else {
                 setSaveMessage('Grades saved locally. Will sync when online.');
+                setTimeout(() => setSaveMessage(null), 3000);
             }
         } catch { setSaveMessage('Failed to save grades'); }
         finally {
             setSaving(false);
-            setTimeout(() => setSaveMessage(null), 3000);
         }
     };
 
