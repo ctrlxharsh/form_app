@@ -257,7 +257,17 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                         for (const q of section.questions) {
                             if (SUBJECTIVE_TYPES.includes(q.question_type)) {
                                 const answer = answers[q.question_id];
-                                if (answer) {
+                                // Only require grading if an answer was actually provided
+                                const hasProvidedAnswer = answer && (
+                                    (answer.text && answer.text.trim().length > 0) ||
+                                    (answer.selectedOptions && answer.selectedOptions.length > 0) ||
+                                    (answer.rankingOrder && answer.rankingOrder.length > 0) ||
+                                    answer.file || 
+                                    processedAnswers[q.question_id]?.imageUrl ||
+                                    processedAnswers[q.question_id]?.localImageId !== undefined
+                                );
+
+                                if (hasProvidedAnswer) {
                                     subjectiveAnswers.push({
                                         answerId: result.answerIds[q.question_id] || 0,
                                         questionId: q.question_id,
@@ -312,11 +322,30 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                         file: answer.file!
                     }));
 
-                // Determine if this assessment has subjective questions
+                // Determine if this assessment has subjective questions THAT WERE ACTUALLY ANSWERED
                 const SUBJECTIVE_TYPES = ['short_answer', 'long_answer', 'image_upload', 'fill_blank', 'range', 'ranking'];
-                const hasSubjectiveQuestions = formData.sections.some(s =>
-                    s.questions.some(q => SUBJECTIVE_TYPES.includes(q.question_type))
-                );
+                let hasSubjectiveQuestions = false;
+                
+                for (const section of formData.sections) {
+                    for (const q of section.questions) {
+                        if (SUBJECTIVE_TYPES.includes(q.question_type)) {
+                            const answer = answers[q.question_id];
+                            const hasProvidedAnswer = answer && (
+                                (answer.text && answer.text.trim().length > 0) ||
+                                (answer.selectedOptions && answer.selectedOptions.length > 0) ||
+                                (answer.rankingOrder && answer.rankingOrder.length > 0) ||
+                                answer.file || 
+                                processedAnswers[q.question_id]?.imageUrl ||
+                                processedAnswers[q.question_id]?.localImageId !== undefined
+                            );
+                            if (hasProvidedAnswer) {
+                                hasSubjectiveQuestions = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hasSubjectiveQuestions) break;
+                }
 
                 const localId = await saveSubmissionWithImages({
                     formId: formData.assessment_id,

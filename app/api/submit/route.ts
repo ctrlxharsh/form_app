@@ -30,6 +30,7 @@ interface AnswerData {
     selectedOptions?: number[];
     rankingOrder?: number[];
     imageUrl?: string;
+    localImageId?: number;
     marksAwarded?: number;
 }
 
@@ -152,24 +153,33 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Determine submission status:
-        // - Objective-only assessments → 'graded' (fully auto-graded)
-        // - Subjective questions fully graded (e.g. offline grading) → 'graded'
-        // - Subjective questions NOT fully graded → 'pending'
-
         let allSubjectiveGraded = true;
+        let requiresManualGrading = false;
+
         if (hasSubjectiveQuestions) {
             for (const qId of subjectiveQuestionIds) {
                 const ans = answers[qId];
-                // Check if answer exists and has marks
-                if (!ans || ans.marksAwarded === undefined || ans.marksAwarded === null) {
-                    allSubjectiveGraded = false;
-                    break;
+                // Check if an answer was actually provided
+                const hasProvidedAnswer = ans && (
+                    (ans.text && ans.text.trim().length > 0) ||
+                    ans.imageUrl ||
+                    ans.localImageId !== undefined ||
+                    (ans.selectedOptions && ans.selectedOptions.length > 0) ||
+                    (ans.rankingOrder && ans.rankingOrder.length > 0)
+                );
+
+                if (hasProvidedAnswer) {
+                    requiresManualGrading = true;
+                    // Check if answer already has marks (e.g., pre-graded offline)
+                    if (ans.marksAwarded === undefined || ans.marksAwarded === null) {
+                        allSubjectiveGraded = false;
+                        break;
+                    }
                 }
             }
         }
 
-        const submissionStatus = (hasSubjectiveQuestions && !allSubjectiveGraded) ? 'pending' : 'graded';
+        const submissionStatus = (requiresManualGrading && !allSubjectiveGraded) ? 'pending' : 'graded';
         // --------------------------
 
         // Create submission record (or Upsert)
