@@ -800,38 +800,40 @@ export async function getOfflineGradingSubmissions(teacherId: number): Promise<S
 
         const subjectiveAnswers: SyncedAnswer[] = [];
 
-        const answers = sub.answers as Record<string, any>; // Cast for access
+        const submittedAnswers = sub.answers as Record<string, any>;
 
         // Get pending images for this submission
         const pendingImages = await db.pendingImages.where('submissionLocalId').equals(sub.localId!).toArray();
         const pendingImageMap = new Map(pendingImages.map(img => [img.questionId, img.imageBlob]));
 
-        for (const [qIdStr, ansVal] of Object.entries(answers)) {
-            const qId = parseInt(qIdStr);
-            const qDef = qMap.get(qId);
-            if (!qDef) continue;
+        // ── Iterate over FORM DEFINITION (not just answered questions) ──────────
+        // This ensures skipped/unanswered subjective questions still appear in
+        // the grading dashboard so the teacher can assign 0 explicitly.
+        const SUBJECTIVE_TYPES = ['short_answer', 'long_answer', 'image_upload', 'fill_blank', 'range', 'ranking'];
 
-            // Only include subjective questions for grading
-            if (['short_answer', 'long_answer', 'image_upload'].includes(qDef.question_type)) {
+        for (const [, qDef] of qMap) {
+            if (!SUBJECTIVE_TYPES.includes(qDef.question_type)) continue;
 
-                // For image uploads, prefer local blob if available
-                let imageBlob: Blob | undefined = undefined;
-                if (qDef.question_type === 'image_upload') {
-                    imageBlob = pendingImageMap.get(qId);
-                }
+            const qId = qDef.question_id;
+            const ansVal = submittedAnswers[qId]; // may be undefined if skipped
 
-                subjectiveAnswers.push({
-                    answerId: -qId, // NEGATIVE ID indicates offline/fake
-                    questionId: qId,
-                    answerText: ansVal.text || '',
-                    answerImageUrl: ansVal.imageUrl || null,
-                    answerImageBlob: imageBlob,
-                    marksAwarded: gradeMap.get(-qId) ?? null,
-                    questionText: qDef.question_text,
-                    questionType: qDef.question_type,
-                    maxMarks: qDef.marks || 0
-                });
+            // For image uploads, prefer local blob if available
+            let imageBlob: Blob | undefined = undefined;
+            if (qDef.question_type === 'image_upload') {
+                imageBlob = pendingImageMap.get(qId);
             }
+
+            subjectiveAnswers.push({
+                answerId: -qId, // NEGATIVE ID indicates offline/fake
+                questionId: qId,
+                answerText: ansVal?.text || null,  // null when skipped
+                answerImageUrl: ansVal?.imageUrl || null,
+                answerImageBlob: imageBlob,
+                marksAwarded: gradeMap.get(-qId) ?? null,
+                questionText: qDef.question_text,
+                questionType: qDef.question_type,
+                maxMarks: qDef.marks || 0
+            });
         }
 
         // Add ALL pending submissions (not just those with subjective answers)

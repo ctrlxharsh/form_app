@@ -195,18 +195,35 @@ async function performSync(): Promise<void> {
                 await syncSubmission(submission);
             } else {
                 // Type B: Has subjective questions
-                // Check if teacher has graded all subjective locally
-                const localGrades = await db.offlineGrades
-                    .where('submissionId')
-                    .equals(-submission.localId!)
-                    .toArray();
+                // Only block sync if the submission actually HAS answers to grade.
+                // If all subjective questions were skipped (no content), sync immediately.
+                const hasActualSubjectiveAnswers = Object.values(submission.answers as Record<string, any>).some(ansVal =>
+                    ansVal && (
+                        (ansVal.text && ansVal.text.trim().length > 0) ||
+                        ansVal.imageUrl ||
+                        ansVal.localImageId != null ||
+                        (ansVal.selectedOptions && ansVal.selectedOptions.length > 0) ||
+                        (ansVal.rankingOrder && ansVal.rankingOrder.length > 0)
+                    )
+                );
 
-                if (localGrades.length > 0) {
-                    // Teacher pre-graded offline — sync with grades
+                if (!hasActualSubjectiveAnswers) {
+                    // No actual answers to grade — sync immediately (all subjective were skipped)
                     await syncSubmission(submission);
                 } else {
-                    // No grades yet — skip, wait for teacher to grade it first
-                    console.log(`[Sync] Skipping offline Type B submission ${submission.localId} (not yet graded by teacher)`);
+                    // Check if teacher has graded all subjective locally
+                    const localGrades = await db.offlineGrades
+                        .where('submissionId')
+                        .equals(-submission.localId!)
+                        .toArray();
+
+                    if (localGrades.length > 0) {
+                        // Teacher pre-graded offline — sync with grades
+                        await syncSubmission(submission);
+                    } else {
+                        // No grades yet — skip, wait for teacher to grade it first
+                        console.log(`[Sync] Skipping offline Type B submission ${submission.localId} (not yet graded by teacher)`);
+                    }
                 }
             }
         }
