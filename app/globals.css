@@ -1016,7 +1016,7 @@ body {
 
 .options-container:not(.with-images) .option-card {
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
   border-radius: 0;
   border-bottom: none;
 }
@@ -1074,6 +1074,12 @@ body {
 
 .option-text {
   font-size: 14px;
+  display: block;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .radio-input,
@@ -1189,12 +1195,18 @@ body {
 .ranking-content {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
+  min-width: 0;
 }
 
 .ranking-text {
   font-size: 14px;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .ranking-image {
