@@ -61,6 +61,22 @@ export default function GradingPage() {
     const [gradedPendingSync, setGradedPendingSync] = useState<SyncedSubmission[]>([]);
     const [recentSubmissions, setRecentSubmissions] = useState<RecentSubmission[]>([]);
 
+    // Offline submissions pending server sync (shown below server feed)
+    interface OfflinePendingSub {
+        localId: number;
+        studentFirstName: string;
+        studentLastName: string;
+        classGrade: number;
+        section: string;
+        assessmentTitle: string;
+        schoolName?: string;
+        savedAt: Date;
+        hasSubjective: boolean;
+        gradingStatus: 'graded' | 'partial' | 'ungraded'; // based on local offline grades
+        status: string;
+    }
+    const [offlinePendingSubs, setOfflinePendingSubs] = useState<OfflinePendingSub[]>([]);
+
     const [assessments, setAssessments] = useState<Assessment[]>([]);
     const [selectedAssessment, setSelectedAssessment] = useState<number | 'all'>('all');
     const [selectedGrade, setSelectedGrade] = useState<number | 'all'>('all');
@@ -214,6 +230,80 @@ export default function GradingPage() {
         setGrades(prev => ({ ...prev, ...initialGrades }));
     }, [session, selectedAssessment, selectedGrade, online]);
 
+    // ── Load offline pending submissions (activity feed supplement) ───────────
+
+    const loadOfflinePendingSubs = useCallback(async () => {
+        if (!session) return;
+        try {
+            const { db: idb } = await import('@/lib/db');
+            const subs = await idb.offlineSubmissions
+                .where('submittedByTeacher')
+                .equals(session.userId)
+                .filter(s => s.status === 'pending')
+                .toArray();
+
+            const result: Parameters<typeof setOfflinePendingSubs>[0] = [];
+
+            for (const sub of subs) {
+                const form = await idb.cachedForms.get(sub.formId);
+                const assessmentTitle = form?.formData.title ?? sub.assessmentTitle ?? `Assessment #${sub.formId}`;
+
+                // Identify subjective questions
+                const allQuestions = form?.formData.sections.flatMap(s => s.questions) ?? [];
+                const subjectiveQIds = allQuestions
+                    .filter(q => ['short_answer', 'long_answer', 'image_upload'].includes(q.question_type))
+                    .map(q => q.question_id);
+
+                // Count answered subjective questions in this submission
+                const answeredSubjIds = subjectiveQIds.filter(qId => {
+                    const ans = sub.answers[qId];
+                    return ans && (ans.text || ans.imageUrl || ans.localImageId != null);
+                });
+
+                const hasSubjective = subjectiveQIds.length > 0;
+                let gradingStatus: 'graded' | 'partial' | 'ungraded' = 'ungraded';
+
+                if (hasSubjective) {
+                    // Check offline grades for this local submission (submissionId = -localId)
+                    const grades = await idb.offlineGrades
+                        .where('submissionId')
+                        .equals(-sub.localId!)
+                        .toArray();
+                    const gradedAnswerIds = new Set(grades.map(g => g.answerId));
+                    // answerId for offline answers = -questionId
+                    const gradedCount = answeredSubjIds.filter(qId => gradedAnswerIds.has(-qId)).length;
+                    if (gradedCount === answeredSubjIds.length && answeredSubjIds.length > 0) {
+                        gradingStatus = 'graded';
+                    } else if (gradedCount > 0) {
+                        gradingStatus = 'partial';
+                    } else {
+                        gradingStatus = 'ungraded';
+                    }
+                }
+
+                result.push({
+                    localId: sub.localId!,
+                    studentFirstName: sub.studentFirstName,
+                    studentLastName: sub.studentLastName,
+                    classGrade: sub.classGrade,
+                    section: sub.section,
+                    assessmentTitle,
+                    schoolName: sub.schoolName,
+                    savedAt: sub.createdAt,
+                    hasSubjective,
+                    gradingStatus,
+                    status: sub.status,
+                });
+            }
+
+            // Sort newest first
+            result.sort((a, b) => b.savedAt.getTime() - a.savedAt.getTime());
+            setOfflinePendingSubs(result);
+        } catch (e) {
+            console.error('Error loading offline pending subs:', e);
+        }
+    }, [session]);
+
     // ── Load recent submissions (activity feed) ───────────────────────────────
 
     const loadRecentSubmissions = useCallback(async () => {
@@ -251,8 +341,9 @@ export default function GradingPage() {
         if (passwordVerified && session) {
             loadSubmissions();
             loadRecentSubmissions();
+            loadOfflinePendingSubs();
         }
-    }, [passwordVerified, session, loadSubmissions, loadRecentSubmissions]);
+    }, [passwordVerified, session, loadSubmissions, loadRecentSubmissions, loadOfflinePendingSubs]);
 
     // Auto-sync grades when coming online
     useEffect(() => {
@@ -322,6 +413,7 @@ export default function GradingPage() {
             setSaveMessage(syncError ? `Sync failed: ${syncError}` : 'Grades synced successfully!');
             await loadSubmissions();
             await loadRecentSubmissions();
+            await loadOfflinePendingSubs();
         } catch (err) {
             console.error('Sync failed:', err);
             setSaveMessage('Failed to sync grades. Please try again.');
@@ -479,7 +571,7 @@ export default function GradingPage() {
                     )}
                     {online && (
                         <button
-                            onClick={() => { loadSubmissions(); loadRecentSubmissions(); }}
+                            onClick={() => { loadSubmissions(); loadRecentSubmissions(); loadOfflinePendingSubs(); }}
                             className="refresh-btn"
                             disabled={syncing}
                         >
@@ -618,6 +710,61 @@ export default function GradingPage() {
                 )}
             </div>
 
+            {/* ── Section 4: Offline – Pending Server Sync ──────────────── */}
+            {offlinePendingSubs.length > 0 && (
+                <div className="grading-section offline-pending-section">
+                    <div className="section-banner offline-banner">
+                        <h3>📴 Offline – Pending Server Sync ({offlinePendingSubs.length})</h3>
+                        <p>
+                            These assessments were saved locally and have not yet been uploaded to the server.
+                            {online
+                                ? ' Connect and use "Sync to Server" to push them.'
+                                : ' They will be synced once you go online.'}
+                        </p>
+                    </div>
+                    <div className="recent-table-wrapper">
+                        <table className="recent-table offline-pending-table">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Class</th>
+                                    <th>School</th>
+                                    <th>Assessment</th>
+                                    <th>Grading</th>
+                                    <th>Saved At</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {offlinePendingSubs.map(sub => (
+                                    <tr key={sub.localId}>
+                                        <td className="student-name">
+                                            {sub.studentFirstName} {sub.studentLastName}
+                                        </td>
+                                        <td>{sub.classGrade}{sub.section}</td>
+                                        <td className="school-name">{sub.schoolName || '—'}</td>
+                                        <td className="assessment-name">{sub.assessmentTitle}</td>
+                                        <td>
+                                            {!sub.hasSubjective ? (
+                                                <span className="status-pill auto-graded">⚡ Auto</span>
+                                            ) : sub.gradingStatus === 'graded' ? (
+                                                <span className="status-pill graded">✓ Graded</span>
+                                            ) : sub.gradingStatus === 'partial' ? (
+                                                <span className="status-pill partial">◐ Partial</span>
+                                            ) : (
+                                                <span className="status-pill pending">⏳ Ungraded</span>
+                                            )}
+                                        </td>
+                                        <td className="time-cell">
+                                            {formatRelativeTime(sub.savedAt)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
             <style jsx>{`
                 .grading-container {
                     max-width: 1400px;
@@ -688,6 +835,9 @@ export default function GradingPage() {
                 .section-banner.info { background: #d1ecf1; border-color: #bee5eb; color: #0c5460; }
                 .section-banner.success { background: #d4edda; border-color: #c3e6cb; color: #155724; }
                 .section-banner.neutral { background: #f8f9fa; border-color: #e0e0e0; color: #333; }
+                .offline-banner { background: #fff8e1; border-color: #ffe082; color: #6d4c00; }
+                .status-pill.auto-graded { background: #e8f4fd; color: #1565c0; }
+                .status-pill.partial { background: #fff3e0; color: #e65100; }
                 .section-banner h3 { margin: 0 0 4px; font-size: 16px; }
                 .section-banner p { margin: 0; font-size: 14px; }
                 .no-submissions {
