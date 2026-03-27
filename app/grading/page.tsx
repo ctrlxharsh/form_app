@@ -358,37 +358,39 @@ export default function GradingPage() {
 
     // ── Sync logic ────────────────────────────────────────────────────────────
 
+    // ── Shared grade-flush helper ────────────────────────────────────────────────────────────────────
+    // Reads every entry from the grades[submissionId] map (including synthetic
+    // -questionId keys for skipped questions) and persists them to IndexedDB.
+    // Must be called before any sync reads from getPendingOfflineGrades().
+    const flushSubGrades = useCallback(async (subs: SyncedSubmission[]) => {
+        for (const sub of subs) {
+            const subGrades = grades[sub.submissionId];
+            if (!subGrades) continue;
+            // Iterate the grades MAP directly — not subjectiveAnswers — so
+            // synthetic answerId entries (for skipped questions) are included.
+            for (const [answerIdStr, mark] of Object.entries(subGrades)) {
+                await saveOfflineGrade(sub.submissionId, Number(answerIdStr), mark);
+            }
+        }
+    }, [grades]);
+
     // handleMarkAllAsGraded
     // ─────────────────────────────────────────────────────────────────────────
     // Works ONLINE and OFFLINE.
     // Flushes current in-memory grades for every "Needs Grading" submission to
     // IndexedDB, then moves them into "Graded – Pending Sync" purely in local
     // React state — no server call, no page reload.
-    // The teacher can keep grading newly loaded submissions while the marked
-    // ones wait for an explicit "Sync" click.
     const handleMarkAllAsGraded = useCallback(async () => {
         if (needsGrading.length === 0) return;
         setSaving(true);
         try {
-            // Snapshot the submissions that are currently in "Needs Grading"
-            // BEFORE we mutate state, so the edge-case is satisfied:
-            // new submissions arriving later are NOT included in this batch.
             const toMark = [...needsGrading];
 
-            // Flush every grade (including untouched defaults) to IndexedDB
-            for (const sub of toMark) {
-                const subGrades = grades[sub.submissionId] ?? {};
-                for (const ans of sub.subjectiveAnswers) {
-                    const mark = subGrades[ans.answerId] ?? 0;
-                    await saveOfflineGrade(sub.submissionId, ans.answerId, mark);
-                }
-            }
+            // Flush ALL grade entries (including synthetic keys for skipped questions)
+            await flushSubGrades(toMark);
 
-            // Move marked subs from "Needs Grading" → "Graded – Pending Sync"
-            // in local state only. No server call.
             setNeedsGrading([]);
             setGradedPendingSync(prev => {
-                // Avoid duplicates in case some were already there
                 const existingIds = new Set(prev.map(s => s.submissionId));
                 const fresh = toMark.filter(s => !existingIds.has(s.submissionId));
                 return [...prev, ...fresh];
@@ -404,7 +406,7 @@ export default function GradingPage() {
         } finally {
             setSaving(false);
         }
-    }, [needsGrading, grades]);
+    }, [needsGrading, grades, flushSubGrades]);
 
     // handleSyncGradedToServer
     // ─────────────────────────────────────────────────────────────────────────
@@ -427,6 +429,13 @@ export default function GradingPage() {
         setSyncing(true);
         let syncError: string | null = null;
         try {
+            // ── Step 0: Flush current in-memory grades to IndexedDB FIRST ───────────────
+            // This is the root-cause fix: if the teacher left inputs at their default
+            // value (e.g. 0) and never onChange'd them, saveOfflineGrade was never
+            // called, so getPendingOfflineGrades() returns empty below, and the
+            // early-return fires with "all already synced" — nothing gets sent to server.
+            await flushSubGrades(gradedPendingSync);
+
             // ── Step 1: Identify ONLY the submissions that are in gradedPendingSync ──
             // This is the key guard: new ungraded submissions are NOT in this set.
             const gradedIds = new Set(gradedPendingSync.map(s => s.submissionId));
