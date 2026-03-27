@@ -863,7 +863,22 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                                             </td>
                                             {questions.map(q => {
                                                 const ans = sub.subjectiveAnswers.find(a => a.questionId === q.questionId);
-                                                if (!ans) return <td key={q.questionId}>—</td>;
+                                                if (!ans) return (
+                                                    <td key={q.questionId} className="grade-cell">
+                                                        <div className="answer-preview">
+                                                            <em style={{ color: '#bbb' }}>Skipped — no answer</em>
+                                                        </div>
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            max={q.maxMarks}
+                                                            value={0}
+                                                            disabled
+                                                            className="grade-input"
+                                                            title="No answer submitted"
+                                                        />
+                                                    </td>
+                                                );
                                                 return (
                                                     <td key={q.questionId} className="grade-cell">
                                                         <div className="answer-preview">

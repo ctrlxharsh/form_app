@@ -157,24 +157,26 @@ export async function POST(request: NextRequest) {
         let requiresManualGrading = false;
 
         if (hasSubjectiveQuestions) {
+            // ANY subjective question (answered OR skipped) requires manual grading
+            // so the teacher can explicitly assign marks (including 0 for unanswered ones)
+            requiresManualGrading = true;
+
             for (const qId of subjectiveQuestionIds) {
                 const ans = answers[qId];
-                // Check if an answer was actually provided
-                const hasProvidedAnswer = ans && (
-                    (ans.text && ans.text.trim().length > 0) ||
-                    ans.imageUrl ||
-                    ans.localImageId !== undefined ||
-                    (ans.selectedOptions && ans.selectedOptions.length > 0) ||
-                    (ans.rankingOrder && ans.rankingOrder.length > 0)
-                );
+                // Check if answer has already been pre-graded offline
+                const isPreGraded = ans && (ans.marksAwarded !== undefined && ans.marksAwarded !== null);
 
-                if (hasProvidedAnswer) {
-                    requiresManualGrading = true;
-                    // Check if answer already has marks (e.g., pre-graded offline)
-                    if (ans.marksAwarded === undefined || ans.marksAwarded === null) {
-                        allSubjectiveGraded = false;
-                        break;
-                    }
+                if (!isPreGraded) {
+                    allSubjectiveGraded = false;
+                    break;
+                }
+            }
+
+            // Ensure a blank answer entry exists for every skipped subjective question
+            // so it appears in the grading dashboard
+            for (const qId of subjectiveQuestionIds) {
+                if (!answers[qId]) {
+                    answers[qId] = { text: undefined, marksAwarded: undefined };
                 }
             }
         }
