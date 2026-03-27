@@ -355,18 +355,36 @@ export default function GradingPage() {
 
     // ── Sync logic ────────────────────────────────────────────────────────────
 
+    // ── Flush all in-memory grades to IndexedDB ───────────────────────────────
+    // Must be called before any sync operation so that grades the teacher entered
+    // (including defaults that were never individually onChange'd) are persisted.
+    const flushGradesToIndexedDB = useCallback(async (
+        subsToFlush: SyncedSubmission[]
+    ) => {
+        for (const sub of subsToFlush) {
+            const subGrades = grades[sub.submissionId];
+            if (!subGrades) continue;
+            for (const ans of sub.subjectiveAnswers) {
+                const mark = subGrades[ans.answerId] ?? 0;
+                await saveOfflineGrade(sub.submissionId, ans.answerId, mark);
+            }
+        }
+        const pending = await getPendingOfflineGrades();
+        setPendingGradesCount(pending.length);
+    }, [grades]);
+
     const syncAllPendingGrades = useCallback(async () => {
         if (!online || !session) return;
         setSyncing(true);
         let syncError: string | null = null;
         try {
+            // Read grades from IndexedDB (already flushed by handleSaveAndSync before this call)
             const pendingGrades = await getPendingOfflineGrades();
             const syncableOnline = pendingGrades.filter(g => g.submissionId > 0);
             const offlineGrades = pendingGrades.filter(g => g.submissionId < 0);
 
             if (syncableOnline.length === 0 && offlineGrades.length === 0) {
-                // No pending grades — but still refresh the UI in case background sync
-                // already processed them (and the page data is stale)
+                // No pending grades — refresh UI in case background sync already handled them
                 await loadSubmissions();
                 await loadRecentSubmissions();
                 setSaveMessage('All grades are already synced!');
@@ -421,7 +439,7 @@ export default function GradingPage() {
             setSyncing(false);
             setTimeout(() => setSaveMessage(null), 4000);
         }
-    }, [online, session, loadSubmissions, loadRecentSubmissions]);
+    }, [online, session, loadSubmissions, loadRecentSubmissions, loadOfflinePendingSubs]);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -453,25 +471,29 @@ export default function GradingPage() {
         setSaving(true);
         setSaveMessage(null);
         try {
-            // Optimistically mark local synced submissions as 'graded' in IndexedDB cache
-            const pending = await getPendingOfflineGrades();
-            const { db } = await import('@/lib/db');
-            for (const g of pending) {
-                if (g.submissionId > 0) {
-                    try { await db.syncedSubmissions.update(g.submissionId, { status: 'graded' }); }
-                    catch { /* ignore */ }
-                }
-            }
+            // ── Step 1: Flush ALL current in-memory grades to IndexedDB ─────────────
+            // This ensures that grades which were never individually onChange'd
+            // (e.g. default-0 values for unanswered questions) are persisted before
+            // sync. Without this, clicking "Sync to Server" after grading does nothing
+            // because saveOfflineGrade was only called for inputs the teacher touched.
+            const allVisibleSubs = [...needsGrading, ...gradedPendingSync];
+            await flushGradesToIndexedDB(allVisibleSubs);
 
             if (online) {
                 await syncAllPendingGrades();
                 // syncAllPendingGrades sets its own saveMessage and calls loadSubmissions()
             } else {
+                // Offline: grades are now in IndexedDB.
+                // Move submissions from "Needs Grading" to "Graded – Pending Sync" locally.
+                await loadSubmissions();
+                await loadOfflinePendingSubs();
                 setSaveMessage('Grades saved locally. Will sync when online.');
                 setTimeout(() => setSaveMessage(null), 3000);
             }
-        } catch { setSaveMessage('Failed to save grades'); }
-        finally {
+        } catch (err) {
+            console.error('Save/sync error:', err);
+            setSaveMessage('Failed to save grades');
+        } finally {
             setSaving(false);
         }
     };
@@ -636,12 +658,13 @@ export default function GradingPage() {
                 <div className="grading-section">
                     <div className="section-banner success">
                         <h3>✅ Graded – Pending Sync ({gradedPendingSync.length})</h3>
-                        <p>Locally graded. {online ? 'Click "Save & Sync" to push to server.' : 'Will auto-sync when internet returns.'}</p>
+                        <p>Locally graded and saved. {online ? 'Click "Sync to Server" to push to server.' : 'Will auto-sync when internet returns.'}</p>
                     </div>
                     <GradingTable
                         submissions={gradedPendingSync}
                         grades={grades}
                         onGradeChange={handleGradeChange}
+                        readOnly
                     />
                 </div>
             )}
@@ -946,10 +969,11 @@ function formatRelativeTime(date: Date): string {
 
 // ─── GradingTable Component ───────────────────────────────────────────────────
 
-function GradingTable({ submissions, grades, onGradeChange }: {
+function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: {
     submissions: SyncedSubmission[];
     grades: Record<number, Record<number, number>>;
     onGradeChange: (subId: number, ansId: number, val: number, max: number) => void;
+    readOnly?: boolean;
 }) {
     const [selectedAnswerText, setSelectedAnswerText] = useState<string | null>(null);
     if (submissions.length === 0) return null;
@@ -1018,15 +1042,15 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                                                         <div className="answer-preview">
                                                             <em style={{ color: '#bbb' }}>Skipped — no answer</em>
                                                         </div>
-                                                        <input
-                                                            type="number"
-                                                            min={0}
-                                                            max={q.maxMarks}
-                                                            value={0}
-                                                            disabled
-                                                            className="grade-input"
-                                                            title="No answer submitted"
-                                                        />
+                                                        {readOnly ? (
+                                                            <span className="grade-badge grade-badge-zero">0 / {q.maxMarks}</span>
+                                                        ) : (
+                                                            <input
+                                                                type="number" min={0} max={q.maxMarks}
+                                                                value={0} disabled
+                                                                className="grade-input" title="No answer submitted"
+                                                            />
+                                                        )}
                                                     </td>
                                                 );
                                                 return (
@@ -1050,19 +1074,28 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <input
-                                                            type="number"
-                                                            min={0}
-                                                            max={q.maxMarks}
-                                                            value={grades[sub.submissionId]?.[ans.answerId] ?? 0}
-                                                            onChange={(e) => onGradeChange(
-                                                                sub.submissionId,
-                                                                ans.answerId,
-                                                                parseFloat(e.target.value) || 0,
-                                                                q.maxMarks
-                                                            )}
-                                                            className="grade-input"
-                                                        />
+                                                        {readOnly ? (
+                                                            <span
+                                                                className="grade-badge"
+                                                                title={`Grade: ${grades[sub.submissionId]?.[ans.answerId] ?? 0} / ${q.maxMarks}`}
+                                                            >
+                                                                {grades[sub.submissionId]?.[ans.answerId] ?? 0} / {q.maxMarks}
+                                                            </span>
+                                                        ) : (
+                                                            <input
+                                                                type="number"
+                                                                min={0}
+                                                                max={q.maxMarks}
+                                                                value={grades[sub.submissionId]?.[ans.answerId] ?? 0}
+                                                                onChange={(e) => onGradeChange(
+                                                                    sub.submissionId,
+                                                                    ans.answerId,
+                                                                    parseFloat(e.target.value) || 0,
+                                                                    q.maxMarks
+                                                                )}
+                                                                className="grade-input"
+                                                            />
+                                                        )}
                                                     </td>
                                                 );
                                             })}
@@ -1111,6 +1144,16 @@ function GradingTable({ submissions, grades, onGradeChange }: {
                     text-align: center; font-size: 14px;
                 }
                 .grade-input:focus { outline: none; border-color: #667eea; }
+                .grade-badge {
+                    display: inline-block; padding: 4px 10px;
+                    background: #d4edda; color: #155724;
+                    border-radius: 10px; font-size: 13px; font-weight: 600;
+                    border: 1px solid #c3e6cb; white-space: nowrap;
+                }
+                .grade-badge-zero {
+                    background: #f0f0f0; color: #888;
+                    border-color: #ddd;
+                }
                 .answer-preview {
                     margin-bottom: 8px; font-size: 13px;
                     background: #f8f9fa; padding: 6px 8px; border-radius: 6px;
