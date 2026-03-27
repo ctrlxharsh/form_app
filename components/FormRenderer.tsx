@@ -599,7 +599,27 @@ function FormHeader({
                 <Link href="/" className="back-to-home">
                     ← Back to Dashboard
                 </Link>
-                <h1 className="form-title">{formData.title}</h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <h1 className="form-title">{formData.title}</h1>
+                    {formData.language && (
+                        <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '3px 10px',
+                            background: 'var(--color-primary, #667eea)',
+                            color: 'white',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            letterSpacing: '0.02em',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0
+                        }}>
+                            🌐 {formData.language}
+                        </span>
+                    )}
+                </div>
                 {formData.description && (
                     <p className="form-description">{formData.description}</p>
                 )}
@@ -614,5 +634,6 @@ function FormHeader({
                 )}
             </div>
         </div>
+
     );
 }
