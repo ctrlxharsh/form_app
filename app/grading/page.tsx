@@ -1076,22 +1076,42 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
                                             </td>
                                             {questions.map(q => {
                                                 const ans = sub.subjectiveAnswers.find(a => a.questionId === q.questionId);
-                                                if (!ans) return (
-                                                    <td key={q.questionId} className="grade-cell">
-                                                        <div className="answer-preview">
-                                                            <em style={{ color: '#bbb' }}>Skipped — no answer</em>
-                                                        </div>
-                                                        {readOnly ? (
-                                                            <span className="grade-badge grade-badge-zero">0 / {q.maxMarks}</span>
-                                                        ) : (
-                                                            <input
-                                                                type="number" min={0} max={q.maxMarks}
-                                                                value={0} disabled
-                                                                className="grade-input" title="No answer submitted"
-                                                            />
-                                                        )}
-                                                    </td>
-                                                );
+                                                if (!ans) {
+                                                    // Student skipped this question — no answer record exists.
+                                                    // Use a synthetic answerId (-questionId) so the teacher
+                                                    // can still assign a mark. Grade is stored in the grades
+                                                    // map and flushed to IndexedDB on "Mark All as Graded".
+                                                    const syntheticAnswerId = -q.questionId;
+                                                    return (
+                                                        <td key={q.questionId} className="grade-cell">
+                                                            <div className="answer-preview">
+                                                                <em style={{ color: '#bbb' }}>No answer submitted</em>
+                                                            </div>
+                                                            {readOnly ? (
+                                                                <span
+                                                                    className="grade-badge"
+                                                                    title={`Grade: ${grades[sub.submissionId]?.[syntheticAnswerId] ?? 0} / ${q.maxMarks}`}
+                                                                >
+                                                                    {grades[sub.submissionId]?.[syntheticAnswerId] ?? 0} / {q.maxMarks}
+                                                                </span>
+                                                            ) : (
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    max={q.maxMarks}
+                                                                    value={grades[sub.submissionId]?.[syntheticAnswerId] ?? 0}
+                                                                    onChange={(e) => onGradeChange(
+                                                                        sub.submissionId,
+                                                                        syntheticAnswerId,
+                                                                        parseFloat(e.target.value) || 0,
+                                                                        q.maxMarks
+                                                                    )}
+                                                                    className="grade-input"
+                                                                />
+                                                            )}
+                                                        </td>
+                                                    );
+                                                }
                                                 return (
                                                     <td key={q.questionId} className="grade-cell">
                                                         <div className="answer-preview">
