@@ -9,7 +9,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getTeacherSession, verifyStoredPassword, type TeacherSession } from '@/lib/auth';
@@ -86,6 +86,9 @@ export default function GradingPage() {
     const [syncing, setSyncing] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
     const [online, setOnline] = useState(true);
+    // Keep a ref so callbacks can read the current online value
+    // without being in their dependency arrays (prevents page reloads on connectivity changes)
+    const onlineRef = useRef(true);
     const [pendingGradesCount, setPendingGradesCount] = useState(0);
     const [showSyncWarning, setShowSyncWarning] = useState(false);
 
@@ -100,11 +103,15 @@ export default function GradingPage() {
         }
         checkSession();
 
-        checkActualConnectivity().then(setOnline);
-        const handleNetworkChange = () => checkActualConnectivity().then(setOnline);
+        checkActualConnectivity().then(v => { setOnline(v); onlineRef.current = v; });
+        const handleNetworkChange = () =>
+            checkActualConnectivity().then(v => { setOnline(v); onlineRef.current = v; });
         window.addEventListener('online', handleNetworkChange);
         window.addEventListener('offline', handleNetworkChange);
-        const interval = setInterval(() => checkActualConnectivity().then(setOnline), 15000);
+        // Poll every 30s (was 15s) — only update the ref/state, never reload the page
+        const interval = setInterval(() =>
+            checkActualConnectivity().then(v => { setOnline(v); onlineRef.current = v; }),
+        30000);
         return () => {
             window.removeEventListener('online', handleNetworkChange);
             window.removeEventListener('offline', handleNetworkChange);
@@ -119,7 +126,7 @@ export default function GradingPage() {
 
         // 1. Load server-synced pending submissions (Type B — have subjective answers)
         let serverPending: SyncedSubmission[] = [];
-        if (online) {
+        if (onlineRef.current) {
             try {
                 const response = await fetch(`/api/grading?teacherId=${session.userId}&status=pending`);
                 if (response.ok) {
@@ -228,7 +235,7 @@ export default function GradingPage() {
             }
         }
         setGrades(prev => ({ ...prev, ...initialGrades }));
-    }, [session, selectedAssessment, selectedGrade, online]);
+    }, [session, selectedAssessment, selectedGrade]); // ← `online` removed: use onlineRef.current inside
 
     // ── Load offline pending submissions (activity feed supplement) ───────────
 
@@ -309,7 +316,7 @@ export default function GradingPage() {
     const loadRecentSubmissions = useCallback(async () => {
         if (!session) return;
 
-        if (online) {
+        if (onlineRef.current) {
             try {
                 const res = await fetch(`/api/grading?teacherId=${session.userId}&recent=true`);
                 if (res.ok) {
@@ -335,7 +342,7 @@ export default function GradingPage() {
                 setRecentSubmissions(data);
             }
         } catch {/* ignore */}
-    }, [session, online]);
+    }, [session]); // ← `online` removed intentionally; uses onlineRef.current to avoid rebuild on connectivity change
 
     useEffect(() => {
         if (passwordVerified && session) {
@@ -345,60 +352,103 @@ export default function GradingPage() {
         }
     }, [passwordVerified, session, loadSubmissions, loadRecentSubmissions, loadOfflinePendingSubs]);
 
-    // Auto-sync grades when coming online
-    useEffect(() => {
-        if (online && passwordVerified && pendingGradesCount > 0) {
-            syncAllPendingGrades();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [online, passwordVerified]);
+    // ── NOTE: Auto-sync on reconnect is intentionally REMOVED.
+    // Teachers must explicitly use 'Mark All as Graded' + 'Sync Graded to Server'.
+    // Auto-syncing while grading caused unwanted page refreshes.
 
     // ── Sync logic ────────────────────────────────────────────────────────────
 
-    // ── Flush all in-memory grades to IndexedDB ───────────────────────────────
-    // Must be called before any sync operation so that grades the teacher entered
-    // (including defaults that were never individually onChange'd) are persisted.
-    const flushGradesToIndexedDB = useCallback(async (
-        subsToFlush: SyncedSubmission[]
-    ) => {
-        for (const sub of subsToFlush) {
-            const subGrades = grades[sub.submissionId];
-            if (!subGrades) continue;
-            for (const ans of sub.subjectiveAnswers) {
-                const mark = subGrades[ans.answerId] ?? 0;
-                await saveOfflineGrade(sub.submissionId, ans.answerId, mark);
-            }
-        }
-        const pending = await getPendingOfflineGrades();
-        setPendingGradesCount(pending.length);
-    }, [grades]);
+    // handleMarkAllAsGraded
+    // ─────────────────────────────────────────────────────────────────────────
+    // Works ONLINE and OFFLINE.
+    // Flushes current in-memory grades for every "Needs Grading" submission to
+    // IndexedDB, then moves them into "Graded – Pending Sync" purely in local
+    // React state — no server call, no page reload.
+    // The teacher can keep grading newly loaded submissions while the marked
+    // ones wait for an explicit "Sync" click.
+    const handleMarkAllAsGraded = useCallback(async () => {
+        if (needsGrading.length === 0) return;
+        setSaving(true);
+        try {
+            // Snapshot the submissions that are currently in "Needs Grading"
+            // BEFORE we mutate state, so the edge-case is satisfied:
+            // new submissions arriving later are NOT included in this batch.
+            const toMark = [...needsGrading];
 
-    const syncAllPendingGrades = useCallback(async () => {
-        if (!online || !session) return;
+            // Flush every grade (including untouched defaults) to IndexedDB
+            for (const sub of toMark) {
+                const subGrades = grades[sub.submissionId] ?? {};
+                for (const ans of sub.subjectiveAnswers) {
+                    const mark = subGrades[ans.answerId] ?? 0;
+                    await saveOfflineGrade(sub.submissionId, ans.answerId, mark);
+                }
+            }
+
+            // Move marked subs from "Needs Grading" → "Graded – Pending Sync"
+            // in local state only. No server call.
+            setNeedsGrading([]);
+            setGradedPendingSync(prev => {
+                // Avoid duplicates in case some were already there
+                const existingIds = new Set(prev.map(s => s.submissionId));
+                const fresh = toMark.filter(s => !existingIds.has(s.submissionId));
+                return [...prev, ...fresh];
+            });
+
+            const pending = await getPendingOfflineGrades();
+            setPendingGradesCount(pending.length);
+            setSaveMessage('All submissions marked as graded locally.');
+            setTimeout(() => setSaveMessage(null), 3000);
+        } catch (err) {
+            console.error('Mark as graded error:', err);
+            setSaveMessage('Failed to mark as graded.');
+        } finally {
+            setSaving(false);
+        }
+    }, [needsGrading, grades]);
+
+    // handleSyncGradedToServer
+    // ─────────────────────────────────────────────────────────────────────────
+    // Syncs ONLY submissions currently in "Graded – Pending Sync".
+    // Submissions still in "Needs Grading" (not yet marked) are left alone.
+    // Edge-case safe: marking → new subs arrive → Sync only touches the marked batch.
+    const handleSyncGradedToServer = useCallback(async () => {
+        if (!session) return;
+        if (!onlineRef.current) {
+            setSaveMessage('You are offline. Grades are saved locally and will sync when you reconnect.');
+            setTimeout(() => setSaveMessage(null), 4000);
+            return;
+        }
+        if (gradedPendingSync.length === 0) {
+            setSaveMessage('No graded submissions to sync. Mark submissions as graded first.');
+            setTimeout(() => setSaveMessage(null), 3000);
+            return;
+        }
+
         setSyncing(true);
         let syncError: string | null = null;
         try {
-            // Read grades from IndexedDB (already flushed by handleSaveAndSync before this call)
-            const pendingGrades = await getPendingOfflineGrades();
-            const syncableOnline = pendingGrades.filter(g => g.submissionId > 0);
-            const offlineGrades = pendingGrades.filter(g => g.submissionId < 0);
+            // ── Step 1: Identify ONLY the submissions that are in gradedPendingSync ──
+            // This is the key guard: new ungraded submissions are NOT in this set.
+            const gradedIds = new Set(gradedPendingSync.map(s => s.submissionId));
 
-            if (syncableOnline.length === 0 && offlineGrades.length === 0) {
-                // No pending grades — refresh UI in case background sync already handled them
-                await loadSubmissions();
-                await loadRecentSubmissions();
-                setSaveMessage('All grades are already synced!');
-                return;
-            }
+            const allPendingGrades = await getPendingOfflineGrades();
 
-            // 1. Sync offline-origin submissions that have been graded
+            // Split into offline-origin (negative submissionId) and server-origin (positive)
+            const offlineGrades = allPendingGrades.filter(g =>
+                g.submissionId < 0 && gradedIds.has(g.submissionId)
+            );
+            const syncableOnline = allPendingGrades.filter(g =>
+                g.submissionId > 0 && gradedIds.has(g.submissionId)
+            );
+
+            // ── Step 2: Sync offline-origin submissions ───────────────────────────────
             const offlineLocalIds = new Set(offlineGrades.map(g => Math.abs(g.submissionId)));
             for (const localId of offlineLocalIds) {
                 try { await syncSpecificSubmission(localId); }
                 catch (e) { console.error('Failed to sync offline sub', localId, e); }
             }
 
-            // 2. Sync grades for server submissions
+            // ── Step 3: Sync grades for server-origin submissions ─────────────────────
             if (syncableOnline.length > 0) {
                 const gradesBySubmission: Record<number, Record<number, number>> = {};
                 for (const g of syncableOnline) {
@@ -422,13 +472,14 @@ export default function GradingPage() {
                 } else {
                     const errData = await response.json().catch(() => ({}));
                     syncError = errData.error || `Server error (${response.status})`;
-                    console.error('Grading sync failed:', syncError);
                 }
             }
 
             const remaining = await getPendingOfflineGrades();
             setPendingGradesCount(new Set(remaining.map(g => g.submissionId)).size);
-            setSaveMessage(syncError ? `Sync failed: ${syncError}` : 'Grades synced successfully!');
+            setSaveMessage(syncError ? `Sync failed: ${syncError}` : 'Grades synced to server!');
+
+            // Reload AFTER sync is complete — teacher was not mid-grading at this point
             await loadSubmissions();
             await loadRecentSubmissions();
             await loadOfflinePendingSubs();
@@ -439,7 +490,7 @@ export default function GradingPage() {
             setSyncing(false);
             setTimeout(() => setSaveMessage(null), 4000);
         }
-    }, [online, session, loadSubmissions, loadRecentSubmissions, loadOfflinePendingSubs]);
+    }, [session, gradedPendingSync, loadSubmissions, loadRecentSubmissions, loadOfflinePendingSubs]);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -455,6 +506,8 @@ export default function GradingPage() {
         finally { setVerifying(false); }
     };
 
+    // Grade change: update React state + persist to IndexedDB.
+    // Intentionally does NOT reload the page or trigger any network calls.
     const handleGradeChange = async (submissionId: number, answerId: number, value: number, maxMarks: number) => {
         const clamped = Math.max(0, Math.min(value, maxMarks));
         setGrades(prev => ({
@@ -462,40 +515,7 @@ export default function GradingPage() {
             [submissionId]: { ...prev[submissionId], [answerId]: clamped }
         }));
         await saveOfflineGrade(submissionId, answerId, clamped);
-        const pending = await getPendingOfflineGrades();
-        setPendingGradesCount(pending.length);
-    };
-
-    const handleSaveAndSync = async () => {
-        if (!session) return;
-        setSaving(true);
-        setSaveMessage(null);
-        try {
-            // ── Step 1: Flush ALL current in-memory grades to IndexedDB ─────────────
-            // This ensures that grades which were never individually onChange'd
-            // (e.g. default-0 values for unanswered questions) are persisted before
-            // sync. Without this, clicking "Sync to Server" after grading does nothing
-            // because saveOfflineGrade was only called for inputs the teacher touched.
-            const allVisibleSubs = [...needsGrading, ...gradedPendingSync];
-            await flushGradesToIndexedDB(allVisibleSubs);
-
-            if (online) {
-                await syncAllPendingGrades();
-                // syncAllPendingGrades sets its own saveMessage and calls loadSubmissions()
-            } else {
-                // Offline: grades are now in IndexedDB.
-                // Move submissions from "Needs Grading" to "Graded – Pending Sync" locally.
-                await loadSubmissions();
-                await loadOfflinePendingSubs();
-                setSaveMessage('Grades saved locally. Will sync when online.');
-                setTimeout(() => setSaveMessage(null), 3000);
-            }
-        } catch (err) {
-            console.error('Save/sync error:', err);
-            setSaveMessage('Failed to save grades');
-        } finally {
-            setSaving(false);
-        }
+        // No setPendingGradesCount here — avoids triggering stale auto-sync effects
     };
 
     // ── Loading / Auth screens ────────────────────────────────────────────────
@@ -600,14 +620,28 @@ export default function GradingPage() {
                             {syncing ? '⟳' : '↻'} Refresh
                         </button>
                     )}
-                    {hasGradingWork && (
+                    {/* Button 1 ─ Mark All as Graded (online + offline) */}
+                    {needsGrading.length > 0 && (
+                        <button
+                            onClick={handleMarkAllAsGraded}
+                            disabled={saving || syncing}
+                            className="save-btn mark-graded-btn"
+                            style={{ padding: '8px 18px', fontSize: '14px' }}
+                            title="Save current grades locally and mark all visible submissions as graded"
+                        >
+                            {saving ? '⟳ Saving...' : '✓ Mark All as Graded'}
+                        </button>
+                    )}
+                    {/* Button 2 ─ Sync Graded to Server (works online only, shows offline hint) */}
+                    {gradedPendingSync.length > 0 && (
                         <button
                             onClick={() => setShowSyncWarning(true)}
                             disabled={saving || syncing}
                             className="save-btn"
                             style={{ padding: '8px 18px', fontSize: '14px' }}
+                            title={online ? 'Push marked-as-graded submissions to the server' : 'Go online to sync'}
                         >
-                            {saving || syncing ? '⟳ Syncing...' : online ? '↻ Sync to Server' : '💾 Save Locally'}
+                            {syncing ? '⟳ Syncing...' : online ? '↑ Sync Graded to Server' : '📶 Sync when Online'}
                         </button>
                     )}
                     <Link href="/" className="back-btn">← Dashboard</Link>
@@ -643,7 +677,7 @@ export default function GradingPage() {
                 <div className="grading-section">
                     <div className="section-banner info">
                         <h3>⏳ Needs Grading ({needsGrading.length})</h3>
-                        <p>These submissions have subjective answers awaiting marks. Grade and click "Save & Sync" to push to server.</p>
+                        <p>Grade these submissions, then click <strong>"Mark All as Graded"</strong> to lock them in. They will move to the section below, ready to sync.</p>
                     </div>
                     <GradingTable
                         submissions={needsGrading}
@@ -882,6 +916,9 @@ export default function GradingPage() {
                     transition: opacity 0.2s;
                 }
                 .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+                .mark-graded-btn {
+                    background: linear-gradient(135deg, #28a745, #1e7e34) !important;
+                }
                 .save-message { font-size: 14px; font-weight: 500; }
                 .save-message.success { color: #155724; }
                 /* Recent table */
@@ -930,9 +967,11 @@ export default function GradingPage() {
                         style={{ background: 'white', borderRadius: '12px', padding: '28px', maxWidth: '420px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <h3 style={{ margin: '0 0 12px', color: '#856404', fontSize: '1.1rem' }}>⚠️ Confirm Sync</h3>
+                        <h3 style={{ margin: '0 0 12px', color: '#856404', fontSize: '1.1rem' }}>⚠️ Confirm Sync to Server</h3>
                         <p style={{ margin: '0 0 24px', lineHeight: 1.6, color: '#333', fontSize: '0.95rem' }}>
-                            It will sync the current records to the database and no more changes can be performed on the database for both online and offline part.
+                            This will push <strong>{gradedPendingSync.length} graded submission{gradedPendingSync.length !== 1 ? 's' : ''}</strong> to the server.
+                            Submissions still in "Needs Grading" will <em>not</em> be affected.
+                            Once synced, marks cannot be changed from this dashboard.
                         </p>
                         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                             <button
@@ -942,7 +981,7 @@ export default function GradingPage() {
                                 Cancel
                             </button>
                             <button
-                                onClick={async () => { setShowSyncWarning(false); await handleSaveAndSync(); }}
+                                onClick={async () => { setShowSyncWarning(false); await handleSyncGradedToServer(); }}
                                 style={{ padding: '9px 20px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
                             >
                                 Proceed &amp; Sync
