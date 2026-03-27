@@ -157,26 +157,29 @@ export async function POST(request: NextRequest) {
         let requiresManualGrading = false;
 
         if (hasSubjectiveQuestions) {
-            // ANY subjective question (answered OR skipped) requires manual grading
-            // so the teacher can explicitly assign marks (including 0 for unanswered ones)
             requiresManualGrading = true;
 
+            // ── Step 1: Ensure every subjective question has an answer entry ─────────
+            // This must happen BEFORE the isPreGraded check below, otherwise `answers[qId]`
+            // is undefined for skipped questions and the check always fails → 'pending' forever.
             for (const qId of subjectiveQuestionIds) {
-                const ans = answers[qId];
-                // Check if answer has already been pre-graded offline
-                const isPreGraded = ans && (ans.marksAwarded !== undefined && ans.marksAwarded !== null);
-
-                if (!isPreGraded) {
-                    allSubjectiveGraded = false;
-                    break;
+                if (!answers[qId]) {
+                    // No answer and no offline grade → auto-grade to 0 so the submission
+                    // can resolve to 'graded'.  Teacher can still override via the online
+                    // grading dashboard afterwards if needed.
+                    answers[qId] = { text: undefined, marksAwarded: 0 };
+                    marksObtained += 0; // explicit: skipped question contributes 0
                 }
             }
 
-            // Ensure a blank answer entry exists for every skipped subjective question
-            // so it appears in the grading dashboard
+            // ── Step 2: Check whether all subjective questions are pre-graded ────────
             for (const qId of subjectiveQuestionIds) {
-                if (!answers[qId]) {
-                    answers[qId] = { text: undefined, marksAwarded: undefined };
+                const ans = answers[qId];
+                // marksAwarded=0 is valid (counts as graded); only undefined/null means ungraded
+                const isPreGraded = ans.marksAwarded !== undefined && ans.marksAwarded !== null;
+                if (!isPreGraded) {
+                    allSubjectiveGraded = false;
+                    break;
                 }
             }
         }

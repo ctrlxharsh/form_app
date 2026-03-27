@@ -415,10 +415,16 @@ async function syncSubmission(submission: OfflineSubmission): Promise<void> {
         // Attach offline grades if present (stored with negative IDs for offline submissions)
         const offlineGrades = await db.offlineGrades.where('submissionId').equals(-localId).toArray();
         for (const grade of offlineGrades) {
-            const questionId = -grade.answerId;
-            if (updatedAnswers[questionId]) {
-                (updatedAnswers[questionId] as any).marksAwarded = grade.marks;
+            const questionId = -grade.answerId; // answerId is stored as -questionId for offline subs
+            // ── KEY FIX: create slot even for skipped (unanswered) questions ──────
+            // Previously this block was `if (updatedAnswers[questionId])`, which silently
+            // dropped grades for questions the student skipped.  The grade was saved in
+            // IndexedDB by the teacher via the dashboard but never sent to the server,
+            // causing the submission to remain 'pending' forever.
+            if (!updatedAnswers[questionId]) {
+                updatedAnswers[questionId] = {}; // blank entry for a skipped question
             }
+            (updatedAnswers[questionId] as any).marksAwarded = grade.marks;
         }
 
         const response = await fetch('/api/submit', {
