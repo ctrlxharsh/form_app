@@ -89,6 +89,8 @@ export default function GradingPage() {
     // Keep a ref so callbacks can read the current online value
     // without being in their dependency arrays (prevents page reloads on connectivity changes)
     const onlineRef = useRef(true);
+    // Track previous online state to detect offline → online transitions
+    const prevOnlineRef = useRef(true);
     const [pendingGradesCount, setPendingGradesCount] = useState(0);
     const [showSyncWarning, setShowSyncWarning] = useState(false);
 
@@ -352,9 +354,23 @@ export default function GradingPage() {
         }
     }, [passwordVerified, session, loadSubmissions, loadRecentSubmissions, loadOfflinePendingSubs]);
 
-    // ── NOTE: Auto-sync on reconnect is intentionally REMOVED.
-    // Teachers must explicitly use 'Mark All as Graded' + 'Sync Graded to Server'.
-    // Auto-syncing while grading caused unwanted page refreshes.
+    // ── Auto-sync on reconnect ────────────────────────────────────────────────
+    // When connectivity is restored (offline → online) and there are grades
+    // pending sync, automatically fire the sync — no manual click required.
+    useEffect(() => {
+        const wasOffline = !prevOnlineRef.current;
+        const isNowOnline = online;
+        prevOnlineRef.current = online;
+
+        if (wasOffline && isNowOnline && passwordVerified && session && gradedPendingSync.length > 0 && !syncing) {
+            // Small delay so the server is properly reachable before we fire
+            const timer = setTimeout(() => {
+                handleSyncGradedToServer();
+            }, 1500);
+            return () => clearTimeout(timer);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [online]);
 
     // ── Sync logic ────────────────────────────────────────────────────────────
 
@@ -397,7 +413,8 @@ export default function GradingPage() {
             });
 
             const pending = await getPendingOfflineGrades();
-            setPendingGradesCount(pending.length);
+            // Count unique submissions, not individual grade records (1 submission can have many answers)
+            setPendingGradesCount(new Set(pending.map(g => g.submissionId)).size);
             setSaveMessage('All submissions marked as graded locally.');
             setTimeout(() => setSaveMessage(null), 3000);
         } catch (err) {
@@ -641,16 +658,16 @@ export default function GradingPage() {
                             {saving ? '⟳ Saving...' : '✓ Mark All as Graded'}
                         </button>
                     )}
-                    {/* Button 2 ─ Sync Graded to Server (works online only, shows offline hint) */}
+                    {/* Button 2 ─ Sync Graded to Server (online) / Queued indicator (offline) */}
                     {gradedPendingSync.length > 0 && (
                         <button
-                            onClick={() => setShowSyncWarning(true)}
-                            disabled={saving || syncing}
+                            onClick={() => { if (online) setShowSyncWarning(true); }}
+                            disabled={saving || syncing || !online}
                             className="save-btn"
-                            style={{ padding: '8px 18px', fontSize: '14px' }}
-                            title={online ? 'Push marked-as-graded submissions to the server' : 'Go online to sync'}
+                            style={{ padding: '8px 18px', fontSize: '14px', opacity: online ? 1 : 0.75 }}
+                            title={online ? 'Push marked-as-graded submissions to the server' : 'Grades are saved locally — will auto-sync when internet returns'}
                         >
-                            {syncing ? '⟳ Syncing...' : online ? '↑ Sync Graded to Server' : '📶 Sync when Online'}
+                            {syncing ? '⟳ Syncing...' : online ? '↑ Sync Graded to Server' : '📶 Will sync on reconnect'}
                         </button>
                     )}
                     <Link href="/" className="back-btn">← Dashboard</Link>
@@ -701,7 +718,7 @@ export default function GradingPage() {
                 <div className="grading-section">
                     <div className="section-banner success">
                         <h3>✅ Graded – Pending Sync ({gradedPendingSync.length})</h3>
-                        <p>Locally graded and saved. {online ? 'Click "Sync to Server" to push to server.' : 'Will auto-sync when internet returns.'}</p>
+                        <p>Locally graded and saved. {online ? 'Click "Sync Graded to Server" to push to server.' : '📶 Offline — grades will be automatically pushed to the server as soon as internet returns.'}</p>
                     </div>
                     <GradingTable
                         submissions={gradedPendingSync}
