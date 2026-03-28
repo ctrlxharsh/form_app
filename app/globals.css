@@ -1551,15 +1551,25 @@ body {
 }
 
 .back-button {
-  background: none;
-  border: none;
-  color: var(--color-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--color-text-secondary);
   cursor: pointer;
   font-size: 14px;
+  font-weight: 500;
+  padding: 8px 14px;
+  text-decoration: none;
+  transition: all 0.2s ease;
 }
 
 .back-button:hover {
-  text-decoration: underline;
+  background: var(--color-secondary);
+  color: var(--color-text);
+  text-decoration: none;
 }
 
 /* ============ PENDING SUBMISSIONS ============ */

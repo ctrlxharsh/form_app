@@ -811,29 +811,31 @@ export async function getOfflineGradingSubmissions(teacherId: number): Promise<S
         // the grading dashboard so the teacher can assign 0 explicitly.
         const SUBJECTIVE_TYPES = ['short_answer', 'long_answer', 'image_upload', 'fill_blank', 'range', 'ranking'];
 
-        for (const [, qDef] of qMap) {
-            if (!SUBJECTIVE_TYPES.includes(qDef.question_type)) continue;
+        for (const section of form.formData.sections) {
+            for (const qDef of section.questions) {
+                if (!SUBJECTIVE_TYPES.includes(qDef.question_type)) continue;
 
-            const qId = qDef.question_id;
-            const ansVal = submittedAnswers[qId]; // may be undefined if skipped
+                const qId = qDef.question_id;
+                const ansVal = submittedAnswers[qId]; // may be undefined if skipped
 
-            // For image uploads, prefer local blob if available
-            let imageBlob: Blob | undefined = undefined;
-            if (qDef.question_type === 'image_upload') {
-                imageBlob = pendingImageMap.get(qId);
+                // For image uploads, prefer local blob if available
+                let imageBlob: Blob | undefined = undefined;
+                if (qDef.question_type === 'image_upload') {
+                    imageBlob = pendingImageMap.get(qId);
+                }
+
+                subjectiveAnswers.push({
+                    answerId: -qId, // NEGATIVE ID indicates offline/fake
+                    questionId: qId,
+                    answerText: ansVal?.text || null,  // null when skipped
+                    answerImageUrl: ansVal?.imageUrl || null,
+                    answerImageBlob: imageBlob,
+                    marksAwarded: gradeMap.get(-qId) ?? null,
+                    questionText: `S${section.order_index}Q${qDef.order_index}) ${qDef.question_text}`,
+                    questionType: qDef.question_type,
+                    maxMarks: qDef.marks || 0
+                });
             }
-
-            subjectiveAnswers.push({
-                answerId: -qId, // NEGATIVE ID indicates offline/fake
-                questionId: qId,
-                answerText: ansVal?.text || null,  // null when skipped
-                answerImageUrl: ansVal?.imageUrl || null,
-                answerImageBlob: imageBlob,
-                marksAwarded: gradeMap.get(-qId) ?? null,
-                questionText: qDef.question_text,
-                questionType: qDef.question_type,
-                maxMarks: qDef.marks || 0
-            });
         }
 
         // Add ALL pending submissions (not just those with subjective answers)

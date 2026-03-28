@@ -155,14 +155,15 @@ export async function GET(request: NextRequest) {
                     sa.answer_text,
                     sa.answer_image_url,
                     sa.marks_awarded,
-                    q.question_text,
+                    CONCAT('S', asect.order_index, 'Q', q.order_index, ') ', q.question_text) as question_text,
                     q.question_type,
                     q.marks as max_marks
                 FROM submission_answers sa
                 JOIN questions q ON sa.question_id = q.question_id
+                JOIN assessment_sections asect ON q.section_id = asect.section_id
                 WHERE sa.submission_id = ${sub.submission_id}
                 AND q.question_type IN ('short_answer', 'long_answer', 'image_upload', 'fill_blank', 'range', 'ranking')
-                ORDER BY q.order_index
+                ORDER BY asect.order_index, q.order_index
             `;
 
             result.push({

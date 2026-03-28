@@ -11,7 +11,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { getTeacherSession, verifyStoredPassword, type TeacherSession } from '@/lib/auth';
 import {
     cacheSyncedSubmissions,
@@ -113,7 +112,7 @@ export default function GradingPage() {
         // Poll every 30s (was 15s) — only update the ref/state, never reload the page
         const interval = setInterval(() =>
             checkActualConnectivity().then(v => { setOnline(v); onlineRef.current = v; }),
-        30000);
+            30000);
         return () => {
             window.removeEventListener('online', handleNetworkChange);
             window.removeEventListener('offline', handleNetworkChange);
@@ -182,24 +181,38 @@ export default function GradingPage() {
         // 3. Identify which submissions have been locally graded
         const pendingGradeIds = await getSubmissionIdsWithPendingGrades();
 
-        // 4. Build "Needs Grading": server-pending + offline-ungraded subjective
-        const allNeedsGrading: SyncedSubmission[] = [
+        // 4. Build unfiltered lists for options
+        const unfilteredNeedsGrading = [
             ...serverPending.filter(s => s.subjectiveAnswers.length > 0 && !pendingGradeIds.has(s.submissionId)),
             ...offlineSubjective.filter(s =>
                 s.subjectiveAnswers.length > 0 && !pendingGradeIds.has(s.submissionId)
             )
-        ].filter(s =>
-            (selectedAssessment === 'all' || s.assessmentId === selectedAssessment) &&
-            (selectedGrade === 'all' || s.classGrade === selectedGrade)
-        );
+        ];
 
-        // 5. Build "Graded – Pending Sync": offline subs with local grades not yet pushed
-        const gradedPending: SyncedSubmission[] = [
+        const unfilteredGradedPending = [
             ...serverPending.filter(s => pendingGradeIds.has(s.submissionId)),
             ...offlineSubjective.filter(s =>
                 s.subjectiveAnswers.length > 0 && pendingGradeIds.has(s.submissionId)
             ),
-        ].filter(s =>
+        ];
+
+        // 5. Derive assessment filter list from unfiltered data so choices do not disappear
+        const assessmentMap = new Map<number, string>();
+        [...unfilteredNeedsGrading, ...unfilteredGradedPending].forEach(s => {
+            assessmentMap.set(s.assessmentId, s.assessmentTitle);
+        });
+        setAssessments(Array.from(assessmentMap.entries())
+            .map(([id, title]) => ({ assessmentId: id, title }))
+            .sort((a, b) => a.title.localeCompare(b.title))
+        );
+
+        // 6. Build final filtered arrays for rendering
+        const allNeedsGrading = unfilteredNeedsGrading.filter(s =>
+            (selectedAssessment === 'all' || s.assessmentId === selectedAssessment) &&
+            (selectedGrade === 'all' || s.classGrade === selectedGrade)
+        );
+
+        const gradedPending = unfilteredGradedPending.filter(s =>
             (selectedAssessment === 'all' || s.assessmentId === selectedAssessment) &&
             (selectedGrade === 'all' || s.classGrade === selectedGrade)
         );
@@ -207,16 +220,6 @@ export default function GradingPage() {
         setNeedsGrading(allNeedsGrading);
         setGradedPendingSync(gradedPending);
         setPendingGradesCount(pendingGradeIds.size);
-
-        // 6. Derive assessment filter list
-        const assessmentMap = new Map<number, string>();
-        [...allNeedsGrading, ...gradedPending].forEach(s => {
-            assessmentMap.set(s.assessmentId, s.assessmentTitle);
-        });
-        setAssessments(Array.from(assessmentMap.entries())
-            .map(([id, title]) => ({ assessmentId: id, title }))
-            .sort((a, b) => a.title.localeCompare(b.title))
-        );
 
         // 7. Initialise grades state from IndexedDB and server data
         const allSubs = [...allNeedsGrading, ...gradedPending];
@@ -330,10 +333,10 @@ export default function GradingPage() {
                             `recent_submissions_${session.userId}`,
                             JSON.stringify({ data: data.submissions, cachedAt: Date.now() })
                         );
-                    } catch {/* ignore */}
+                    } catch {/* ignore */ }
                     return;
                 }
-            } catch {/* fall through to cache */}
+            } catch {/* fall through to cache */ }
         }
 
         // Offline: read from localStorage cache
@@ -343,7 +346,7 @@ export default function GradingPage() {
                 const { data } = JSON.parse(cached);
                 setRecentSubmissions(data);
             }
-        } catch {/* ignore */}
+        } catch {/* ignore */ }
     }, [session]); // ← `online` removed intentionally; uses onlineRef.current to avoid rebuild on connectivity change
 
     useEffect(() => {
@@ -369,7 +372,7 @@ export default function GradingPage() {
             }, 1500);
             return () => clearTimeout(timer);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [online]);
 
     // ── Sync logic ────────────────────────────────────────────────────────────
@@ -492,7 +495,7 @@ export default function GradingPage() {
                     const { db } = await import('@/lib/db');
                     for (const subId of Object.keys(gradesBySubmission).map(Number)) {
                         try { await db.syncedSubmissions.update(subId, { status: 'graded' }); }
-                        catch {/* ignore */}
+                        catch {/* ignore */ }
                     }
                     await markGradesAsSynced(syncableOnline.map(g => g.id!));
                 } else {
@@ -572,11 +575,15 @@ export default function GradingPage() {
                             autoFocus
                         />
                         {passwordError && <div className="verify-error">{passwordError}</div>}
-                        <button type="submit" disabled={verifying}>
-                            {verifying ? 'Verifying...' : 'Verify & Continue'}
-                        </button>
+                        <div className="verify-actions">
+                            <button type="button" onClick={() => router.push('/')} className="verify-back-btn">
+                                <span className="back-arrow">←</span> Back
+                            </button>
+                            <button type="submit" disabled={verifying} className="verify-submit-btn">
+                                {verifying ? 'Verifying...' : 'Verify Access'}
+                            </button>
+                        </div>
                     </form>
-                    <Link href="/" className="verify-back">← Back to Dashboard</Link>
                 </div>
                 <style jsx>{`
                     .grading-verify-container {
@@ -585,39 +592,61 @@ export default function GradingPage() {
                         align-items: center;
                         justify-content: center;
                         padding: 20px;
-                        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
                     }
                     .verify-card {
                         background: white;
-                        padding: 40px;
-                        border-radius: 16px;
-                        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+                        padding: 48px 40px;
+                        border-radius: 20px;
+                        box-shadow: 0 20px 40px -10px rgba(0,0,0,0.1);
                         text-align: center;
-                        max-width: 400px;
+                        max-width: 420px;
                         width: 100%;
+                        border: 1px solid #f1f5f9;
                     }
-                    .verify-card h2 { margin: 0 0 8px; }
-                    .verify-card p { color: #666; margin: 0 0 8px; }
-                    .verify-user { margin-bottom: 24px !important; }
+                    .verify-card h2 { margin: 0 0 12px; font-size: 24px; color: #0f172a; letter-spacing: -0.02em; }
+                    .verify-card p { color: #64748b; margin: 0 0 8px; font-size: 15px; }
+                    .verify-user { margin-bottom: 32px !important; color: #475569 !important; }
+                    .verify-user strong { color: #0f172a; font-weight: 600; }
                     .verify-card input {
-                        width: 100%; padding: 12px 16px;
-                        border: 1px solid #ddd; border-radius: 8px;
-                        font-size: 16px; margin-bottom: 12px; box-sizing: border-box;
+                        width: 100%; padding: 14px 16px;
+                        border: 1px solid #cbd5e1; border-radius: 10px;
+                        font-size: 15px; margin-bottom: 20px; box-sizing: border-box;
+                        transition: all 0.2s;
+                        outline: none; color: #0f172a;
                     }
-                    .verify-error { color: #c00; margin-bottom: 12px; font-size: 14px; }
-                    .verify-card button {
-                        width: 100%; padding: 12px;
-                        background: #667eea; color: white;
-                        border: none; border-radius: 8px;
-                        font-size: 16px; cursor: pointer;
+                    .verify-card input:focus {
+                        border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
                     }
-                    .verify-card button:disabled { opacity: 0.6; }
-                    .verify-back { display: inline-block; margin-top: 16px; color: #667eea; text-decoration: none; }
+                    .verify-card input::placeholder { color: #94a3b8; }
+                    .verify-error { color: #ef4444; margin-bottom: 16px; font-size: 14px; background: #fef2f2; padding: 10px; border-radius: 8px; border: 1px solid #fecaca; }
+                    
+                    .verify-actions { display: flex; gap: 12px; margin-top: 12px; }
+                    
+                    .verify-back-btn {
+                        flex: 1; padding: 14px; background: transparent; color: #64748b; 
+                        border: 1px solid transparent; border-radius: 10px; font-size: 15px; font-weight: 600; 
+                        text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; 
+                        transition: all 0.2s ease;
+                    }
+                    .verify-back-btn:hover { background: #f1f5f9; color: #0f172a; border-color: transparent; }
+                    .back-arrow { font-size: 16px; transition: transform 0.2s; margin-top: -1px; }
+                    .verify-back-btn:hover .back-arrow { transform: translateX(-4px); }
+                    
+                    .verify-submit-btn {
+                        flex: 2; padding: 14px; background: #4f46e5; color: white; border: none;
+                        border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer;
+                        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+                        letter-spacing: 0.01em;
+                    }
+                    .verify-submit-btn:hover:not(:disabled) {
+                        background: #4338ca;
+                    }
+                    .verify-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
                 `}</style>
             </div>
         );
     }
-
     // ── Main dashboard ────────────────────────────────────────────────────────
 
     const hasGradingWork = needsGrading.length > 0 || gradedPendingSync.length > 0;
@@ -626,9 +655,14 @@ export default function GradingPage() {
         <div className="grading-container">
             {/* Header */}
             <header className="grading-header">
-                <div>
-                    <h1>📝 Grading Dashboard</h1>
-                    <p>Grade subjective answers and track submissions</p>
+                <div className="header-left">
+                    <button type="button" onClick={() => router.push('/')} className="back-btn" title="Back to Dashboard">
+                        <span className="back-icon">←</span> Dashboard
+                    </button>
+                    <div>
+                        <h1>📝 Grading Dashboard</h1>
+                        <p>Grade subjective answers and track submissions</p>
+                    </div>
                 </div>
                 <div className="header-actions">
                     <span className={`status-badge ${online ? 'online' : 'offline'}`}>
@@ -670,7 +704,6 @@ export default function GradingPage() {
                             {syncing ? '⟳ Syncing...' : online ? '↑ Sync Graded to Server' : '📶 Will sync on reconnect'}
                         </button>
                     )}
-                    <Link href="/" className="back-btn">← Dashboard</Link>
                 </div>
             </header>
 
@@ -739,61 +772,7 @@ export default function GradingPage() {
 
 
 
-            {/* ── Section 3: Recent Submissions (Activity Feed) ─────────── */}
-            <div className="grading-section recent-section">
-                <div className="section-banner neutral">
-                    <h3>📋 Recent Submissions (Last 24h)</h3>
-                    <p>{online ? 'Live from server.' : 'Showing cached data from last sync.'}</p>
-                </div>
-                {recentSubmissions.length === 0 ? (
-                    <div className="no-submissions small">
-                        <p>No submissions in the last 24 hours.</p>
-                    </div>
-                ) : (
-                    <div className="recent-table-wrapper">
-                        <table className="recent-table">
-                            <thead>
-                                <tr>
-                                    <th>Student</th>
-                                    <th>Class</th>
-                                    <th>School</th>
-                                    <th>Assessment</th>
-                                    <th>Status</th>
-                                    <th>Score</th>
-                                    <th>Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {recentSubmissions.map(sub => (
-                                    <tr key={sub.submission_id}>
-                                        <td className="student-name">
-                                            {sub.student_first_name} {sub.student_last_name}
-                                        </td>
-                                        <td>{sub.class_grade}{sub.section}</td>
-                                        <td className="school-name">{sub.school_name || '—'}</td>
-                                        <td className="assessment-name">{sub.assessment_title}</td>
-                                        <td>
-                                            <span className={`status-pill ${sub.status}`}>
-                                                {sub.status === 'graded' ? '✓ Graded' : '⏳ Pending'}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            {sub.status === 'graded' && sub.marks_obtained !== null
-                                                ? `${sub.marks_obtained}${sub.total_marks ? '/' + sub.total_marks : ''}`
-                                                : '—'}
-                                        </td>
-                                        <td className="time-cell">
-                                            {formatRelativeTime(new Date(sub.submitted_at))}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-
-            {/* ── Section 4: Offline – Pending Server Sync ──────────────── */}
+            {/* ── Section 3: Offline – Pending Server Sync ──────────────── */}
             {offlinePendingSubs.length > 0 && (
                 <div className="grading-section offline-pending-section">
                     <div className="section-banner offline-banner">
@@ -848,12 +827,66 @@ export default function GradingPage() {
                 </div>
             )}
 
+            {/* ── Section 4: Recent Submissions (Activity Feed) ─────────── */}
+            <div className="grading-section recent-section">
+                <div className="section-banner neutral">
+                    <h3>📋 Recent Submissions (Last 24h)</h3>
+                    <p>{online ? 'Live from server.' : 'Showing cached data from last sync.'}</p>
+                </div>
+                {recentSubmissions.length === 0 ? (
+                    <div className="no-submissions small">
+                        <p>No submissions in the last 24 hours.</p>
+                    </div>
+                ) : (
+                    <div className="recent-table-wrapper">
+                        <table className="recent-table">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Class</th>
+                                    <th>School</th>
+                                    <th>Assessment</th>
+                                    <th>Status</th>
+                                    <th>Score</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {recentSubmissions.map(sub => (
+                                    <tr key={sub.submission_id}>
+                                        <td className="student-name">
+                                            {sub.student_first_name} {sub.student_last_name}
+                                        </td>
+                                        <td>{sub.class_grade}{sub.section}</td>
+                                        <td className="school-name">{sub.school_name || '—'}</td>
+                                        <td className="assessment-name">{sub.assessment_title}</td>
+                                        <td>
+                                            <span className={`status-pill ${sub.status}`}>
+                                                {sub.status === 'graded' ? '✓ Graded' : '⏳ Pending'}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {sub.status === 'graded' && sub.marks_obtained !== null
+                                                ? `${sub.marks_obtained}${sub.total_marks ? '/' + sub.total_marks : ''}`
+                                                : '—'}
+                                        </td>
+                                        <td className="time-cell">
+                                            {formatRelativeTime(new Date(sub.submitted_at))}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
             <style jsx>{`
                 .grading-container {
                     max-width: 1400px;
                     margin: 0 auto;
                     padding: 24px;
-                    padding-bottom: 100px;
+                    padding-bottom: 80px;
                 }
                 .grading-header {
                     display: flex;
@@ -863,28 +896,46 @@ export default function GradingPage() {
                     flex-wrap: wrap;
                     gap: 16px;
                 }
-                .grading-header h1 { margin: 0; }
-                .grading-header p { color: #666; margin: 4px 0 0; }
+                .header-left {
+                    display: flex;
+                    align-items: center;
+                    gap: 24px;
+                }
+                .grading-header h1 { margin: 0 0 4px; font-size: 26px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+                .grading-header p { color: #64748b; margin: 0; font-size: 14px; font-weight: 400; }
                 .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
                 .status-badge {
-                    padding: 4px 12px; border-radius: 12px;
-                    font-size: 12px; font-weight: 500;
+                    padding: 6px 14px; border-radius: 20px;
+                    font-size: 13px; font-weight: 600;
+                    border: 1px solid transparent;
                 }
-                .status-badge.online { background: #d4edda; color: #155724; }
-                .status-badge.offline { background: #fff3cd; color: #856404; }
+                .status-badge.online { background: oklch(96% 0.03 144); color: oklch(40% 0.1 144); border-color: oklch(90% 0.06 144); }
+                .status-badge.offline { background: oklch(96% 0.04 80); color: oklch(45% 0.12 80); border-color: oklch(90% 0.08 80); }
                 .pending-badge {
-                    padding: 4px 12px; background: #f8d7da;
-                    color: #721c24; border-radius: 12px; font-size: 12px;
+                    padding: 6px 14px; background: oklch(96% 0.04 15);
+                    color: oklch(50% 0.16 15); border-radius: 20px; font-size: 13px; font-weight: 600;
+                    border: 1px solid oklch(90% 0.06 15);
                 }
                 .back-btn {
-                    padding: 8px 16px; background: #f0f0f0;
-                    border-radius: 8px; text-decoration: none; color: #333;
+                    padding: 8px 14px; background: transparent;
+                    border: 1px solid transparent;
+                    border-radius: 8px; text-decoration: none; color: #64748b;
+                    font-weight: 600; font-size: 14px;
+                    transition: all 0.2s ease;
+                    display: inline-flex; align-items: center; gap: 6px;
                 }
+                .back-btn:hover {
+                    background: #f1f5f9; color: #0f172a; border-color: transparent;
+                }
+                .back-icon { transition: transform 0.2s; font-size: 16px; margin-top: -1px; }
+                .back-btn:hover .back-icon { transform: translateX(-4px); }
                 .refresh-btn {
-                    padding: 8px 16px; background: #667eea; color: white;
-                    border: none; border-radius: 8px; cursor: pointer; font-size: 14px;
+                    padding: 10px 18px; background: #f1f5f9; color: #475569;
+                    border: 1px solid transparent; border-radius: 10px; cursor: pointer; font-size: 14px;
+                    font-weight: 600; transition: all 0.2s;
                 }
-                .refresh-btn:disabled { opacity: 0.6; }
+                .refresh-btn:hover:not(:disabled) { background: #e2e8f0; color: #0f172a; }
+                .refresh-btn:disabled { opacity: 0.6; cursor: not-allowed; }
                 .grading-filters {
                     display: flex; align-items: center; gap: 12px;
                     margin-bottom: 24px; flex-wrap: wrap;
@@ -909,71 +960,74 @@ export default function GradingPage() {
                     0%, 80%, 100% { transform: scale(0); }
                     40% { transform: scale(1); }
                 }
-                .grading-section { margin-bottom: 40px; }
-                .recent-section { margin-top: 40px; }
+                .grading-section { margin-bottom: 48px; }
+                .recent-section { margin-top: 48px; }
                 .section-banner {
-                    padding: 12px 20px; border-radius: 10px;
-                    margin-bottom: 16px; border: 1px solid transparent;
+                    padding: 16px 24px; border-radius: 12px;
+                    margin-bottom: 20px; border: 1px solid transparent;
+                    display: flex; flex-direction: column; gap: 4px;
                 }
-                .section-banner.info { background: #d1ecf1; border-color: #bee5eb; color: #0c5460; }
-                .section-banner.success { background: #d4edda; border-color: #c3e6cb; color: #155724; }
-                .section-banner.neutral { background: #f8f9fa; border-color: #e0e0e0; color: #333; }
-                .offline-banner { background: #fff8e1; border-color: #ffe082; color: #6d4c00; }
-                .status-pill.auto-graded { background: #e8f4fd; color: #1565c0; }
-                .status-pill.partial { background: #fff3e0; color: #e65100; }
-                .section-banner h3 { margin: 0 0 4px; font-size: 16px; }
-                .section-banner p { margin: 0; font-size: 14px; }
+                .section-banner h3 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+                .section-banner p { margin: 0; font-size: 14px; opacity: 0.9; }
+                .section-banner.info { background: oklch(96% 0.02 240); border-color: oklch(90% 0.04 240); color: oklch(35% 0.08 240); }
+                .section-banner.success { background: oklch(96% 0.03 144); border-color: oklch(90% 0.06 144); color: oklch(35% 0.08 144); }
+                .section-banner.neutral { background: oklch(98% 0 0); border-color: oklch(90% 0 0); color: oklch(40% 0 0); }
+                .offline-banner { background: oklch(96% 0.04 80); border-color: oklch(90% 0.08 80); color: oklch(40% 0.1 80); }
                 .no-submissions {
-                    text-align: center; padding: 60px 20px; color: #666;
-                    background: white; border-radius: 12px; border: 1px solid #eee;
+                    text-align: center; padding: 64px 20px; color: oklch(50% 0 0);
+                    background: white; border-radius: 16px; border: 1px dashed oklch(85% 0 0);
+                    font-size: 15px;
                 }
-                .no-submissions.small { padding: 24px 20px; }
-                .grading-actions {
-                    position: sticky; bottom: 0; z-index: 10;
-                    display: flex; align-items: center; gap: 16px;
-                    padding: 16px 20px; background: white;
-                    border-top: 1px solid #eee;
-                    box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
-                }
+                .no-submissions.small { padding: 32px 20px; }
                 .save-btn {
-                    padding: 12px 28px; background: linear-gradient(135deg, #667eea, #764ba2);
+                    padding: 12px 24px; background: #0f172a;
                     color: white; border: none; border-radius: 10px;
-                    font-size: 15px; font-weight: 600; cursor: pointer;
-                    transition: opacity 0.2s;
+                    font-size: 14px; font-weight: 600; cursor: pointer;
+                    transition: background-color 0.2s ease;
+                }
+                .save-btn:hover:not(:disabled) {
+                    background: #1e293b;
                 }
                 .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
                 .mark-graded-btn {
-                    background: linear-gradient(135deg, #28a745, #1e7e34) !important;
+                    background: oklch(50% 0.12 144) !important;
                 }
-                .save-message { font-size: 14px; font-weight: 500; }
-                .save-message.success { color: #155724; }
-                /* Recent table */
+                .mark-graded-btn:hover:not(:disabled) {
+                    background: oklch(45% 0.12 144) !important;
+                }
+                /* Recent table container */
                 .recent-table-wrapper {
-                    overflow-x: auto; border: 1px solid #e0e0e0;
+                    overflow-x: auto; border: 1px solid #e2e8f0;
                     border-radius: 12px; background: white;
+                    box-shadow: 0 2px 4px -2px rgba(0,0,0,0.02);
                 }
-                .recent-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+                .recent-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
                 .recent-table th {
-                    padding: 12px 14px; background: #f8f9fa;
-                    font-weight: 600; text-align: left;
-                    border-bottom: 2px solid #e0e0e0; white-space: nowrap;
+                    padding: 14px 16px; background: #f8fafc;
+                    font-weight: 600; text-align: left; color: #475569;
+                    border-bottom: 1px solid #e2e8f0; white-space: nowrap;
+                    font-size: 13px;
                 }
                 .recent-table td {
-                    padding: 11px 14px; border-bottom: 1px solid #f0f0f0;
+                    padding: 14px 16px; border-bottom: 1px solid #f1f5f9;
+                    color: #334155; vertical-align: middle;
                 }
                 .recent-table tr:last-child td { border-bottom: none; }
-                .recent-table tr:hover td { background: #fafafa; }
-                .student-name { font-weight: 500; color: #222; white-space: nowrap; }
-                .school-name { color: #555; max-width: 160px; }
-                .assessment-name { max-width: 180px; color: #333; }
-                .time-cell { color: #888; font-size: 13px; white-space: nowrap; }
+                .recent-table tr:hover td { background: #f8fafc; }
+                .student-name { font-weight: 600; color: #0f172a; white-space: nowrap; }
+                .school-name { color: #64748b; font-size: 13px; max-width: 160px; }
+                .assessment-name { max-width: 200px; color: #334155; font-weight: 500; }
+                .time-cell { color: #64748b; font-size: 13px; white-space: nowrap; }
+                
                 .status-pill {
-                    display: inline-block; padding: 3px 10px;
-                    border-radius: 12px; font-size: 12px; font-weight: 500;
-                    white-space: nowrap;
+                    display: inline-flex; align-items: center; justify-content: center;
+                    padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+                    white-space: nowrap; letter-spacing: 0.01em; height: 24px;
                 }
-                .status-pill.graded { background: #d4edda; color: #155724; }
-                .status-pill.pending { background: #fff3cd; color: #856404; }
+                .status-pill.graded { background: oklch(96% 0.03 144); color: oklch(40% 0.1 144); }
+                .status-pill.pending { background: oklch(96% 0.04 80); color: oklch(45% 0.12 80); }
+                .status-pill.auto-graded { background: oklch(96% 0.03 240); color: oklch(45% 0.1 240); }
+                .status-pill.partial { background: oklch(96% 0.04 45); color: oklch(50% 0.14 45); }
             `}</style>
 
             {/* Save message toast */}
@@ -1144,7 +1198,7 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
                                                             {ans.answerImageUrl || ans.answerImageBlob ? (
                                                                 <ImageLink url={ans.answerImageUrl} blob={ans.answerImageBlob} />
                                                             ) : (
-                                                                <span 
+                                                                <span
                                                                     className="ans-text clickable"
                                                                     onClick={() => {
                                                                         if (ans.answerText) setSelectedAnswerText(ans.answerText);
@@ -1194,50 +1248,63 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
             })}
 
             <style jsx>{`
-                .grading-groups { display: flex; flex-direction: column; gap: 32px; }
+                .grading-groups { display: flex; flex-direction: column; gap: 40px; }
                 .assessment-group {
-                    background: white; border-radius: 12px;
-                    border: 1px solid #e8e8e8; padding: 20px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+                    background: white; border-radius: 16px;
+                    border: 1px solid #e2e8f0; padding: 24px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.02);
                 }
                 .group-title {
-                    margin: 0 0 16px; font-size: 18px; color: #222;
-                    border-bottom: 2px solid #667eea;
-                    display: inline-block; padding-bottom: 4px;
+                    margin: 0 0 20px; font-size: 20px; color: #0f172a;
+                    font-weight: 700; letter-spacing: -0.01em;
+                    display: flex; align-items: center; gap: 8px;
+                }
+                .group-title::before {
+                    content: ''; display: block; width: 6px; height: 24px;
+                    background: #4f46e5; border-radius: 4px;
                 }
                 .grading-table-wrapper {
-                    overflow-x: auto; border: 1px solid #e8e8e8; border-radius: 10px;
+                    overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px;
+                    box-shadow: 0 2px 4px -2px rgba(0,0,0,0.02);
                 }
-                .grading-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+                .grading-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
                 .grading-table th, .grading-table td {
-                    padding: 12px 14px; border-bottom: 1px solid #f0f0f0; text-align: left;
+                    padding: 14px 16px; border-bottom: 1px solid #f1f5f9; text-align: left;
+                    vertical-align: middle;
                 }
-                .grading-table th { background: #f8f9fa; font-weight: 600; white-space: nowrap; }
+                .grading-table th { 
+                    background: #f8fafc; font-weight: 600; color: #475569; white-space: nowrap; 
+                    font-size: 13px;
+                }
                 .grading-table tr:last-child td { border-bottom: none; }
+                .grading-table tbody tr:hover td { background: #f8fafc; }
                 .sticky-col {
                     position: sticky; left: 0; background: white; z-index: 1;
-                    min-width: 140px;
+                    min-width: 140px; border-right: 1px solid #e2e8f0;
                 }
-                .grading-table th.sticky-col { background: #f8f9fa; }
-                .student-cell {}
-                .student-name { font-weight: 600; color: #222; }
-                .student-meta { font-size: 12px; color: #888; margin-top: 2px; }
-                .grade-cell { min-width: 160px; }
+                .grading-table tbody tr:hover td.sticky-col { background: #f8fafc; }
+                .grading-table th.sticky-col { background: #f8fafc; }
+                .student-cell { max-width: 250px; }
+                .student-name { font-weight: 600; color: #0f172a; }
+                .student-meta { font-size: 13px; color: #64748b; margin-top: 4px; }
+                .grade-cell { min-width: 200px; }
                 .grade-input {
-                    width: 64px; padding: 6px 8px;
-                    border: 1px solid #ddd; border-radius: 6px;
-                    text-align: center; font-size: 14px;
+                    width: 72px; padding: 8px 10px;
+                    border: 1px solid #cbd5e1; border-radius: 8px;
+                    text-align: center; font-size: 14px; font-weight: 500;
+                    color: #0f172a; transition: all 0.2s;
                 }
-                .grade-input:focus { outline: none; border-color: #667eea; }
+                .grade-input:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
                 .grade-badge {
-                    display: inline-block; padding: 4px 10px;
-                    background: #d4edda; color: #155724;
-                    border-radius: 10px; font-size: 13px; font-weight: 600;
-                    border: 1px solid #c3e6cb; white-space: nowrap;
+                    display: inline-flex; align-items: center; justify-content: center;
+                    padding: 4px 12px; height: 28px;
+                    background: oklch(96% 0.03 144); color: oklch(40% 0.1 144);
+                    border-radius: 14px; font-size: 13px; font-weight: 600;
+                    white-space: nowrap; border: 1px solid oklch(90% 0.06 144);
                 }
                 .grade-badge-zero {
-                    background: #f0f0f0; color: #888;
-                    border-color: #ddd;
+                    background: #f8fafc; color: #64748b;
+                    border-color: #e2e8f0;
                 }
                 .answer-preview {
                     margin-bottom: 8px; font-size: 13px;
@@ -1259,7 +1326,7 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
                 }
                 .view-img-link.disabled { color: #bbb; cursor: default; text-decoration: none; }
             `}</style>
-            
+
             {selectedAnswerText && (
                 <TextPopup text={selectedAnswerText} onClose={() => setSelectedAnswerText(null)} />
             )}
@@ -1388,14 +1455,14 @@ function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
 
     return (
         <div className="thumbnail-container">
-            <div 
-                className="thumbnail-preview" 
+            <div
+                className="thumbnail-preview"
                 onClick={() => setIsPopupOpen(true)}
                 title="Click to view full image"
             >
-                <img 
-                    src={displayUrl} 
-                    alt="Answer thumbnail" 
+                <img
+                    src={displayUrl}
+                    alt="Answer thumbnail"
                     onError={() => setError(true)}
                     className="thumb-img"
                 />
@@ -1403,12 +1470,12 @@ function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
                     <span>🔍 View</span>
                 </div>
             </div>
-            
+
             {isPopupOpen && (
-                <ImagePopup 
-                    src={displayUrl} 
+                <ImagePopup
+                    src={displayUrl}
                     alt="Answer preview"
-                    onClose={() => setIsPopupOpen(false)} 
+                    onClose={() => setIsPopupOpen(false)}
                 />
             )}
 

@@ -160,15 +160,11 @@ export async function POST(request: NextRequest) {
             requiresManualGrading = true;
 
             // ── Step 1: Ensure every subjective question has an answer entry ─────────
-            // This must happen BEFORE the isPreGraded check below, otherwise `answers[qId]`
-            // is undefined for skipped questions and the check always fails → 'pending' forever.
+            // This guarantees a row is created in submission_answers so the teacher
+            // can grade it in the dashboard. We DO NOT auto-grade it to 0.
             for (const qId of subjectiveQuestionIds) {
                 if (!answers[qId]) {
-                    // No answer and no offline grade → auto-grade to 0 so the submission
-                    // can resolve to 'graded'.  Teacher can still override via the online
-                    // grading dashboard afterwards if needed.
-                    answers[qId] = { text: undefined, marksAwarded: 0 };
-                    marksObtained += 0; // explicit: skipped question contributes 0
+                    answers[qId] = { text: undefined };
                 }
             }
 
