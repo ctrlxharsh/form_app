@@ -239,7 +239,24 @@ export default function GradingPage() {
                 initialGrades[sub.submissionId][ans.answerId] = local ?? ans.marksAwarded ?? 0;
             }
         }
-        setGrades(prev => ({ ...prev, ...initialGrades }));
+        setGrades(prev => {
+            const next = { ...prev };
+            for (const subIdStr in initialGrades) {
+                const subId = Number(subIdStr);
+                if (!next[subId]) {
+                    next[subId] = { ...initialGrades[subId] };
+                } else {
+                    for (const ansIdStr in initialGrades[subId]) {
+                        const ansId = Number(ansIdStr);
+                        // Preserve drafts by only initializing if undefined in current state
+                        if (next[subId][ansId] === undefined) {
+                            next[subId][ansId] = initialGrades[subId][ansId];
+                        }
+                    }
+                }
+            }
+            return next;
+        });
     }, [session, selectedAssessment, selectedGrade]); // ← `online` removed: use onlineRef.current inside
 
     // ── Load offline pending submissions (activity feed supplement) ───────────
@@ -543,8 +560,8 @@ export default function GradingPage() {
             ...prev,
             [submissionId]: { ...prev[submissionId], [answerId]: clamped }
         }));
-        await saveOfflineGrade(submissionId, answerId, clamped);
-        // No setPendingGradesCount here — avoids triggering stale auto-sync effects
+        // We do NOT save to IndexedDB here anymore. Grades only get "saved" and move to
+        // "Graded - Pending Sync" when the user explicitly clicks "Mark All as Graded".
     };
 
     // ── Loading / Auth screens ────────────────────────────────────────────────
