@@ -1111,7 +1111,7 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
     onGradeChange: (subId: number, ansId: number, val: number, max: number) => void;
     readOnly?: boolean;
 }) {
-    const [selectedAnswerText, setSelectedAnswerText] = useState<string | null>(null);
+    const [popupContent, setPopupContent] = useState<{title: string, text: string} | null>(null);
     if (submissions.length === 0) return null;
 
     // Group by assessment title
@@ -1147,10 +1147,18 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
                                     <tr>
                                         <th className="sticky-col">Student</th>
                                         {questions.map(q => (
-                                            <th key={q.questionId} title={q.questionText}>
-                                                {q.questionText.length > 28
-                                                    ? q.questionText.substring(0, 28) + '…'
-                                                    : q.questionText}
+                                            <th key={q.questionId} title="Click to view full question">
+                                                <span
+                                                    className="ans-text clickable"
+                                                    style={{ cursor: 'pointer', color: 'inherit' }}
+                                                    onClick={() => {
+                                                        if (q.questionText) setPopupContent({ title: "Full Question Text", text: q.questionText });
+                                                    }}
+                                                >
+                                                    {q.questionText.length > 28
+                                                        ? q.questionText.substring(0, 28) + '…'
+                                                        : q.questionText}
+                                                </span>
                                                 <br />
                                                 <small style={{ fontWeight: 'normal', color: '#888' }}>
                                                     max {q.maxMarks}
@@ -1218,7 +1226,7 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
                                                                 <span
                                                                     className="ans-text clickable"
                                                                     onClick={() => {
-                                                                        if (ans.answerText) setSelectedAnswerText(ans.answerText);
+                                                                        if (ans.answerText) setPopupContent({ title: "Full Answer Text", text: ans.answerText });
                                                                     }}
                                                                     title={ans.answerText ? "Click to view full answer" : ""}
                                                                 >
@@ -1344,8 +1352,8 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
                 .view-img-link.disabled { color: #bbb; cursor: default; text-decoration: none; }
             `}</style>
 
-            {selectedAnswerText && (
-                <TextPopup text={selectedAnswerText} onClose={() => setSelectedAnswerText(null)} />
+            {popupContent && (
+                <TextPopup text={popupContent.text} title={popupContent.title} onClose={() => setPopupContent(null)} />
             )}
         </div>
     );
@@ -1353,7 +1361,7 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
 
 // ─── TextPopup Component ──────────────────────────────────────────────────────
 
-function TextPopup({ text, onClose }: { text: string; onClose: () => void }) {
+function TextPopup({ text, title, onClose }: { text: string; title?: string; onClose: () => void }) {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
@@ -1368,7 +1376,7 @@ function TextPopup({ text, onClose }: { text: string; onClose: () => void }) {
                 <div className="text-popup-controls">
                     <button onClick={onClose} className="close-btn" title="Close">✕</button>
                 </div>
-                <div className="text-popup-title">Full Answer Text</div>
+                <div className="text-popup-title">{title || "Full Text"}</div>
                 <div className="text-popup-text">
                     {text}
                 </div>
