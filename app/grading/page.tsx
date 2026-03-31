@@ -27,7 +27,7 @@ import { ImagePopup } from '@/components/ImagePopup';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-interface Assessment { assessmentId: number; title: string; }
+interface Assessment { filterKey: string; assessmentId: number; title: string; language?: string; }
 
 interface RecentSubmission {
     submission_id: number;
@@ -42,6 +42,7 @@ interface RecentSubmission {
     assessment_id: number;
     assessment_title: string;
     school_name: string | null;
+    selected_language?: string;
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
@@ -73,11 +74,12 @@ export default function GradingPage() {
         hasSubjective: boolean;
         gradingStatus: 'graded' | 'partial' | 'ungraded'; // based on local offline grades
         status: string;
+        selectedLanguage?: string;
     }
     const [offlinePendingSubs, setOfflinePendingSubs] = useState<OfflinePendingSub[]>([]);
 
     const [assessments, setAssessments] = useState<Assessment[]>([]);
-    const [selectedAssessment, setSelectedAssessment] = useState<number | 'all'>('all');
+    const [selectedAssessment, setSelectedAssessment] = useState<string | 'all'>('all');
     const [selectedGrade, setSelectedGrade] = useState<number | 'all'>('all');
 
     const [grades, setGrades] = useState<Record<number, Record<number, number>>>({});
@@ -92,6 +94,7 @@ export default function GradingPage() {
     const prevOnlineRef = useRef(true);
     const [pendingGradesCount, setPendingGradesCount] = useState(0);
     const [showSyncWarning, setShowSyncWarning] = useState(false);
+    const [showMarkAllWarning, setShowMarkAllWarning] = useState(false);
 
     // ── Session + connectivity ────────────────────────────────────────────────
 
@@ -156,6 +159,7 @@ export default function GradingPage() {
                             questionType: ans.question_type,
                             maxMarks: ans.max_marks
                         })),
+                        selectedLanguage: sub.selected_language,
                         cachedAt: new Date()
                     }));
                     await cacheSyncedSubmissions(serverPending);
@@ -197,25 +201,29 @@ export default function GradingPage() {
         ];
 
         // 5. Derive assessment filter list from unfiltered data so choices do not disappear
-        const assessmentMap = new Map<number, string>();
+        const assessmentMap = new Map<string, { id: number, title: string, lang: string }>();
         [...unfilteredNeedsGrading, ...unfilteredGradedPending].forEach(s => {
-            assessmentMap.set(s.assessmentId, s.assessmentTitle);
+            const key = s.selectedLanguage ? `${s.assessmentId}-${s.selectedLanguage}` : `${s.assessmentId}`;
+            const title = s.selectedLanguage ? `${s.assessmentTitle} (${s.selectedLanguage})` : s.assessmentTitle;
+            assessmentMap.set(key, { id: s.assessmentId, title, lang: s.selectedLanguage || '' });
         });
         setAssessments(Array.from(assessmentMap.entries())
-            .map(([id, title]) => ({ assessmentId: id, title }))
+            .map(([key, data]) => ({ filterKey: key, assessmentId: data.id, title: data.title, language: data.lang }))
             .sort((a, b) => a.title.localeCompare(b.title))
         );
 
         // 6. Build final filtered arrays for rendering
-        const allNeedsGrading = unfilteredNeedsGrading.filter(s =>
-            (selectedAssessment === 'all' || s.assessmentId === selectedAssessment) &&
-            (selectedGrade === 'all' || s.classGrade === selectedGrade)
-        );
+        const allNeedsGrading = unfilteredNeedsGrading.filter(s => {
+            const currentKey = s.selectedLanguage ? `${s.assessmentId}-${s.selectedLanguage}` : `${s.assessmentId}`;
+            return (selectedAssessment === 'all' || currentKey === selectedAssessment) &&
+                (selectedGrade === 'all' || s.classGrade === selectedGrade);
+        });
 
-        const gradedPending = unfilteredGradedPending.filter(s =>
-            (selectedAssessment === 'all' || s.assessmentId === selectedAssessment) &&
-            (selectedGrade === 'all' || s.classGrade === selectedGrade)
-        );
+        const gradedPending = unfilteredGradedPending.filter(s => {
+            const currentKey = s.selectedLanguage ? `${s.assessmentId}-${s.selectedLanguage}` : `${s.assessmentId}`;
+            return (selectedAssessment === 'all' || currentKey === selectedAssessment) &&
+                (selectedGrade === 'all' || s.classGrade === selectedGrade);
+        });
 
         setNeedsGrading(allNeedsGrading);
         setGradedPendingSync(gradedPending);
@@ -322,6 +330,7 @@ export default function GradingPage() {
                     hasSubjective,
                     gradingStatus,
                     status: sub.status,
+                    selectedLanguage: sub.selectedLanguage,
                 });
             }
 
@@ -700,7 +709,7 @@ export default function GradingPage() {
                     {/* Button 1 ─ Mark All as Graded (online + offline) */}
                     {needsGrading.length > 0 && (
                         <button
-                            onClick={handleMarkAllAsGraded}
+                            onClick={() => setShowMarkAllWarning(true)}
                             disabled={saving || syncing}
                             className="save-btn mark-graded-btn"
                             style={{ padding: '8px 18px', fontSize: '14px' }}
@@ -739,11 +748,11 @@ export default function GradingPage() {
                 <label>Assessment:</label>
                 <select
                     value={selectedAssessment}
-                    onChange={(e) => setSelectedAssessment(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                    onChange={(e) => setSelectedAssessment(e.target.value)}
                 >
                     <option value="all">All Assessments</option>
                     {assessments.map(a => (
-                        <option key={a.assessmentId} value={a.assessmentId}>{a.title}</option>
+                        <option key={a.filterKey} value={a.filterKey}>{a.title}</option>
                     ))}
                 </select>
             </div>
@@ -821,7 +830,9 @@ export default function GradingPage() {
                                         </td>
                                         <td>{sub.classGrade}{sub.section}</td>
                                         <td className="school-name">{sub.schoolName || '—'}</td>
-                                        <td className="assessment-name">{sub.assessmentTitle}</td>
+                                        <td className="assessment-name">
+                                            {sub.selectedLanguage ? `${sub.assessmentTitle} (${sub.selectedLanguage})` : sub.assessmentTitle}
+                                        </td>
                                         <td>
                                             {!sub.hasSubjective ? (
                                                 <span className="status-pill auto-graded">⚡ Auto</span>
@@ -876,7 +887,9 @@ export default function GradingPage() {
                                         </td>
                                         <td>{sub.class_grade}{sub.section}</td>
                                         <td className="school-name">{sub.school_name || '—'}</td>
-                                        <td className="assessment-name">{sub.assessment_title}</td>
+                                        <td className="assessment-name">
+                                            {sub.selected_language ? `${sub.assessment_title} (${sub.selected_language})` : sub.assessment_title}
+                                        </td>
                                         <td>
                                             <span className={`status-pill ${sub.status}`}>
                                                 {sub.status === 'graded' ? '✓ Graded' : '⏳ Pending'}
@@ -1087,6 +1100,39 @@ export default function GradingPage() {
                     </div>
                 </div>
             )}
+
+            {/* Mark All as Graded Warning Modal */}
+            {showMarkAllWarning && (
+                <div
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+                    onClick={() => setShowMarkAllWarning(false)}
+                >
+                    <div
+                        style={{ background: 'white', borderRadius: '12px', padding: '28px', maxWidth: '420px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 style={{ margin: '0 0 12px', color: '#856404', fontSize: '1.1rem' }}>⚠️ Confirm Mark as Graded</h3>
+                        <p style={{ margin: '0 0 24px', lineHeight: 1.6, color: '#333', fontSize: '0.95rem' }}>
+                            Are you sure you want to mark <strong>{needsGrading.length} submission{needsGrading.length !== 1 ? 's' : ''}</strong> as graded?
+                            They will be locked from further edits in this view unless refreshed.
+                        </p>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => setShowMarkAllWarning(false)}
+                                style={{ padding: '9px 20px', border: '1px solid #ccc', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '14px' }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => { setShowMarkAllWarning(false); await handleMarkAllAsGraded(); }}
+                                style={{ padding: '9px 20px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
+                            >
+                                Mark as Graded
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -1114,10 +1160,11 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
     const [popupContent, setPopupContent] = useState<{title: string, text: string} | null>(null);
     if (submissions.length === 0) return null;
 
-    // Group by assessment title
+    // Group by assessment title + language
     const groups = submissions.reduce((acc, sub) => {
-        if (!acc[sub.assessmentTitle]) acc[sub.assessmentTitle] = [];
-        acc[sub.assessmentTitle].push(sub);
+        const title = sub.selectedLanguage ? `${sub.assessmentTitle} (${sub.selectedLanguage})` : sub.assessmentTitle;
+        if (!acc[title]) acc[title] = [];
+        acc[title].push(sub);
         return acc;
     }, {} as Record<string, SyncedSubmission[]>);
 

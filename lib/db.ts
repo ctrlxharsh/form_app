@@ -189,6 +189,7 @@ export interface SyncedSubmission {
     assessmentTitle: string;
     submittedByTeacher: number;
     schoolName?: string;      // School name for display in Recent Submissions
+    selectedLanguage?: string; // Language selected by student
     subjectiveAnswers: SyncedAnswer[];
     cachedAt: Date;
 }
@@ -847,6 +848,7 @@ export async function getOfflineGradingSubmissions(teacherId: number): Promise<S
             section: sub.section,
             submittedAt: sub.createdAt,
             status: 'pending',
+            selectedLanguage: sub.selectedLanguage,
             marksObtained: null,
             assessmentId: sub.formId,
             assessmentTitle: form.formData.title,

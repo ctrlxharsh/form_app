@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
                     s.status,
                     s.marks_obtained,
                     s.total_marks,
+                    s.selected_language,
                     a.assessment_id,
                     a.title as assessment_title,
                     sc.school_name
@@ -72,6 +73,7 @@ export async function GET(request: NextRequest) {
                         s.status,
                         s.marks_obtained,
                         s.total_marks,
+                        s.selected_language,
                         a.assessment_id,
                         a.title as assessment_title
                     FROM submissions s
@@ -92,6 +94,7 @@ export async function GET(request: NextRequest) {
                         s.status,
                         s.marks_obtained,
                         s.total_marks,
+                        s.selected_language,
                         a.assessment_id,
                         a.title as assessment_title
                     FROM submissions s
@@ -115,6 +118,7 @@ export async function GET(request: NextRequest) {
                         s.status,
                         s.marks_obtained,
                         s.total_marks,
+                        s.selected_language,
                         a.assessment_id,
                         a.title as assessment_title
                     FROM submissions s
@@ -134,6 +138,7 @@ export async function GET(request: NextRequest) {
                         s.status,
                         s.marks_obtained,
                         s.total_marks,
+                        s.selected_language,
                         a.assessment_id,
                         a.title as assessment_title
                     FROM submissions s
