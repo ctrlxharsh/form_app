@@ -1,16 +1,28 @@
 /**
- * PostgreSQL Client using Neon Serverless Driver
- * 
- * This module provides database access for API routes.
- * Uses @neondatabase/serverless for optimized connections to Neon PostgreSQL.
+ * PostgreSQL Client - Standard TCP Driver
+ *
+ * Uses the 'postgres' package (standard TCP/SSL) for compatibility with
+ * DigitalOcean managed PostgreSQL and any standard PostgreSQL host.
+ * Previously used @neondatabase/serverless (HTTP-only, Neon-specific).
  */
 
-import { neon } from '@neondatabase/serverless';
+import postgres from 'postgres';
 
-// Create a SQL query function connected to Neon
-const sql = neon(process.env.DATABASE_URL!);
+// Create a pooled SQL client. ssl: 'require' matches ?sslmode=require in the URL.
+const client = postgres(process.env.DATABASE_URL!, {
+    ssl: 'require',
+    max: 10,           // Max pool connections
+    idle_timeout: 20,  // Close idle connections after 20s
+    connect_timeout: 10,
+});
 
-export { sql };
+/**
+ * Tagged-template SQL function — drop-in replacement for neon`...`.
+ * Returns an array of rows, matching the neon driver's interface.
+ */
+export const sql = client;
+
+export { client };
 
 // ============ FORM QUERIES ============
 // These mirror the original Streamlit queries from pages/assessments/db.py
