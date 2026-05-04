@@ -102,6 +102,22 @@ export interface CachedAssessment {
     academic_year?: string;
 }
 
+/** Cached student for offline login */
+export interface CachedStudent {
+    student_id: number;
+    unique_id: string;
+    password: string;
+    first_name: string;
+    last_name: string;
+    class_grade: number;
+    section: string;
+    gender: 'Male' | 'Female';
+    school_id: number;
+    school_name: string;
+    udise_code: string;
+    intervention: string;
+}
+
 /** Offline submission awaiting sync */
 export interface OfflineSubmission {
     localId?: number;         // Auto-incremented local ID
@@ -248,6 +264,7 @@ class FormDatabase extends Dexie {
     offlineGrades!: EntityTable<OfflineGrade, 'id'>;
     knownUsers!: EntityTable<KnownUser, 'userId'>;
     cachedImages!: EntityTable<CachedImage, 'url'>;
+    cachedStudents!: EntityTable<CachedStudent, 'student_id'>;
 
     constructor() {
         super('FormAppDB');
@@ -329,6 +346,22 @@ class FormDatabase extends Dexie {
             offlineGrades: '++id, submissionId, answerId, synced, [submissionId+answerId]',
             knownUsers: 'userId, username',
             cachedImages: 'url'
+        });
+
+        // Version 9: Add cachedStudents for offline student login
+        this.version(9).stores({
+            cachedForms: 'formId, cachedAt',
+            cachedSchools: 'school_id, intervention, udise_code',
+            cachedAssessments: 'assessment_id, class_grade, group_identifier',
+            offlineSubmissions: '++localId, formId, status, createdAt, submittedByTeacher, hasSubjectiveQuestions',
+            pendingImages: '++localId, submissionLocalId, questionId, status',
+            syncMeta: 'key',
+            teacherSession: 'id',
+            syncedSubmissions: 'submissionId, submittedByTeacher, assessmentId, [submittedByTeacher+assessmentId]',
+            offlineGrades: '++id, submissionId, answerId, synced, [submissionId+answerId]',
+            knownUsers: 'userId, username',
+            cachedImages: 'url',
+            cachedStudents: 'student_id, unique_id, school_id, class_grade'
         });
     }
 }
@@ -895,3 +928,39 @@ export async function getCachedImageBlob(url: string): Promise<Blob | undefined>
         return undefined;
     }
 }
+
+// ============ STUDENTS HELPERS ============
+
+/**
+ * Cache students for offline login
+ */
+export async function cacheStudents(students: CachedStudent[]): Promise<void> {
+    await db.transaction('rw', db.cachedStudents, async () => {
+        // We don't clear all because a teacher might have multiple schools
+        // and we want to keep them all. Or we can clear if we sync everything for the teacher.
+        await db.cachedStudents.bulkPut(students);
+    });
+}
+
+/**
+ * Offline student login verification
+ */
+export async function verifyStudentOffline(uniqueId: string, password: string): Promise<CachedStudent | null> {
+    const student = await db.cachedStudents
+        .where('unique_id')
+        .equals(uniqueId)
+        .first();
+
+    if (student && student.password === password) {
+        return student;
+    }
+    return null;
+}
+
+/**
+ * Get students by class for offline search (optional future use)
+ */
+export async function getCachedStudentsByClass(classGrade: number): Promise<CachedStudent[]> {
+    return db.cachedStudents.where('class_grade').equals(classGrade).toArray();
+}
+

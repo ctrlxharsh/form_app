@@ -1,25 +1,22 @@
+
 /**
- * Student Details Form Component
+ * Student Details Form Component (Login Flow)
  * 
  * Step 1 of the assessment submission flow.
- * Google Forms style - clean inputs with underlines.
+ * Students enter their ID and Password to auto-fetch details.
  */
 
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import {
-    getCachedSchoolsByIntervention,
-    validateSchoolUdiseOffline,
-    hasSchoolsCache,
-    type CachedSchool
-} from '@/lib/db';
-import { isOnline } from '@/lib/sync';
+import { isOnline, checkActualConnectivity } from '@/lib/sync';
+import { verifyStudentOffline } from '@/lib/db';
 
 export interface StudentDetails {
     studentFirstName: string;
     studentLastName: string;
-    studentName: string; // Keep for backward compat if needed, or derived
+    studentName: string;
+    studentId: number;
     gender: 'Male' | 'Female';
     classGrade: number;
     section: string;
@@ -35,261 +32,203 @@ interface StudentDetailsFormProps {
     onSubmit: (details: StudentDetails) => void;
 }
 
-export function StudentDetailsForm({ initialClassGrade = 4, onSubmit }: StudentDetailsFormProps) {
-    const [intervention, setIntervention] = useState<'Prototype' | 'Propagate'>('Prototype');
-    const [schools, setSchools] = useState<CachedSchool[]>([]);
-    const [selectedSchoolId, setSelectedSchoolId] = useState<number | ''>('');
-    const [udiseCode, setUdiseCode] = useState('');
-    const [studentFirstName, setStudentFirstName] = useState('');
-    const [studentLastName, setStudentLastName] = useState('');
-    const [geolocation, setGeolocation] = useState<string | null>(null);
-    const [gender, setGender] = useState<'Male' | 'Female'>('Male');
-    const [classGrade, setClassGrade] = useState(initialClassGrade);
-    const [section, setSection] = useState('N/A');
-
+export function StudentDetailsForm({ onSubmit }: StudentDetailsFormProps) {
+    const [studentId, setStudentId] = useState('');
+    const [password, setPassword] = useState('');
+    const [lookupResult, setLookupResult] = useState<StudentDetails | null>(null);
     const [loading, setLoading] = useState(false);
-    const [errors, setErrors] = useState<string[]>([]);
-    const [hasCache, setHasCache] = useState(false);
-    const [online, setOnline] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [geolocation, setGeolocation] = useState<string | null>(null);
 
-    useEffect(() => {
-        setOnline(isOnline());
-        hasSchoolsCache().then(setHasCache);
-
-        const handleOnline = () => setOnline(true);
-        const handleOffline = () => setOnline(false);
-
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-
-        return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-        };
-    }, []);
-
-    useEffect(() => {
-        async function fetchSchools() {
-            setLoading(true);
-
-            try {
-                if (online) {
-                    // Get teacher session for RBAC filtering
-                    const { db } = await import('@/lib/db');
-                    const session = await db.table('teacherSession').get(1);
-
-                    // Build URL with RBAC params
-                    const params = new URLSearchParams();
-                    params.set('intervention', intervention);
-                    if (session) {
-                        params.set('userId', String(session.userId));
-                        params.set('role', session.role);
-                    }
-
-                    const response = await fetch(`/api/schools?${params.toString()}`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        setSchools(data);
-                    }
-                } else if (hasCache) {
-                    const cached = await getCachedSchoolsByIntervention(intervention);
-                    setSchools(cached);
-                } else {
-                    setSchools([]);
-                }
-            } catch (error) {
-                console.error('Failed to fetch schools:', error);
-                const cached = await getCachedSchoolsByIntervention(intervention);
-                setSchools(cached);
-            } finally {
-                setLoading(false);
-            }
-        }
-
-        fetchSchools();
-    }, [intervention, online, hasCache]);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        const newErrors: string[] = [];
-
-        const selectedSchool = schools.find(s => s.school_id === selectedSchoolId);
-        const derivedUdise = selectedSchool?.udise_code || udiseCode;
-
-        if (!studentFirstName.trim()) newErrors.push('Please enter first name');
-        if (!studentLastName.trim()) newErrors.push('Please enter last name');
-        if (!selectedSchoolId) newErrors.push('Please select a school');
-
-        if (newErrors.length > 0) {
-            setErrors(newErrors);
-            return;
-        }
-
-        onSubmit({
-            studentFirstName: studentFirstName.trim(),
-            studentLastName: studentLastName.trim(),
-            studentName: `${studentFirstName.trim()} ${studentLastName.trim()}`,
-            gender,
-            classGrade,
-            section,
-            schoolId: selectedSchoolId as number,
-            schoolName: selectedSchool?.school_name || '',
-            intervention,
-            udiseCode: derivedUdise,
-            geolocation
-        });
-    };
-
-    // Auto-capture geolocation on mount/interaction
+    // Capture geolocation
     useEffect(() => {
         if ('geolocation' in navigator) {
             navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const { latitude, longitude } = position.coords;
-                    setGeolocation(`${latitude},${longitude}`);
-                },
-                (error) => {
-                    console.log('Geolocation permission denied or error', error);
-                }
+                (pos) => setGeolocation(`${pos.coords.latitude},${pos.coords.longitude}`),
+                () => console.log('Geo denied')
             );
         }
     }, []);
 
-    const classOptions = [4, 5, 6, 7, 8, 9, 10];
-    const sectionOptions = ['N/A', 'A', 'B', 'C', 'D', 'E', 'F', 'G'];
+    const handleLogin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
+        setLookupResult(null);
+
+        const online = await checkActualConnectivity();
+
+        if (!online) {
+            // Offline verification
+            const student = await verifyStudentOffline(studentId, password);
+            if (student) {
+                setLookupResult({
+                    studentId: student.student_id,
+                    studentFirstName: student.first_name,
+                    studentLastName: student.last_name,
+                    studentName: `${student.first_name} ${student.last_name}`,
+                    classGrade: student.class_grade,
+                    section: student.section,
+                    schoolId: student.school_id,
+                    schoolName: student.school_name,
+                    udiseCode: student.udise_code,
+                    intervention: (student.intervention as any) || 'Prototype',
+                    gender: student.gender
+                });
+            } else {
+                setError('Offline: Student not found or incorrect password. (Note: Student data must be synced while online first)');
+            }
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/students/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ studentId, password })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setLookupResult(data);
+            } else {
+                const err = await res.json();
+                setError(err.error || 'Invalid Student ID or Password');
+            }
+        } catch (err: any) {
+            console.error('[StudentLogin] Network/Server Error:', err);
+            
+            // Fallback to offline verification if online request fails
+            const student = await verifyStudentOffline(studentId, password);
+            if (student) {
+                setLookupResult({
+                    studentId: student.student_id,
+                    studentFirstName: student.first_name,
+                    studentLastName: student.last_name,
+                    studentName: `${student.first_name} ${student.last_name}`,
+                    classGrade: student.class_grade,
+                    section: student.section,
+                    schoolId: student.school_id,
+                    schoolName: student.school_name,
+                    udiseCode: student.udise_code,
+                    intervention: (student.intervention as any) || 'Prototype',
+                    gender: student.gender
+                });
+            } else {
+                setError(`Connection failed: ${err.message || 'Unknown network error'}. Also could not find student locally.`);
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleConfirm = () => {
+        if (lookupResult) {
+            onSubmit({ ...lookupResult, geolocation });
+        }
+    };
 
     return (
-        <form onSubmit={handleSubmit} className="student-form">
-            {errors.length > 0 && (
-                <div className="error-container">
-                    {errors.map((error, idx) => (
-                        <p key={idx} className="error-message">{error}</p>
-                    ))}
+        <div className="student-login-container">
+            {!lookupResult ? (
+                <form onSubmit={handleLogin} className="login-form">
+                    <div className="form-section">
+                        <div className="section-label">Student Login</div>
+                        <p className="section-desc">Enter your unique Student ID and Password to begin the assessment.</p>
+                        
+                        <div className="form-field">
+                            <label className="field-label">Student Unique ID *</label>
+                            <input 
+                                type="text" 
+                                value={studentId} 
+                                onChange={e => setStudentId(e.target.value)}
+                                className="text-input"
+                                placeholder="e.g. PJMMH26..."
+                                required
+                            />
+                        </div>
+
+                        <div className="form-field">
+                            <label className="field-label">Password *</label>
+                            <input 
+                                type="password" 
+                                value={password} 
+                                onChange={e => setPassword(e.target.value)}
+                                className="text-input"
+                                placeholder="Enter password"
+                                required
+                            />
+                        </div>
+
+                        {error && <div className="error-message">⚠️ {error}</div>}
+
+                        <button type="submit" disabled={loading} className="submit-button primary">
+                            {loading ? 'Verifying...' : 'Login →'}
+                        </button>
+                    </div>
+                </form>
+            ) : (
+                <div className="confirmation-card">
+                    <div className="confirm-header">
+                        <div className="confirm-icon">👤</div>
+                        <h3>Confirm Your Identity</h3>
+                    </div>
+                    
+                    <div className="details-grid">
+                        <div className="detail-item">
+                            <label>Name</label>
+                            <div className="detail-value">{lookupResult.studentName}</div>
+                        </div>
+                        <div className="detail-item">
+                            <label>Class & Section</label>
+                            <div className="detail-value">Class {lookupResult.classGrade} ({lookupResult.section})</div>
+                        </div>
+                        <div className="detail-item">
+                            <label>School</label>
+                            <div className="detail-value">{lookupResult.schoolName}</div>
+                        </div>
+                    </div>
+
+                    <p className="confirm-text">Is this you? If yes, click below to start.</p>
+
+                    <div className="confirm-actions">
+                        <button onClick={() => setLookupResult(null)} className="nav-button secondary">
+                            Not Me (Back)
+                        </button>
+                        <button onClick={handleConfirm} className="submit-button primary">
+                            Yes, Start Assessment →
+                        </button>
+                    </div>
                 </div>
             )}
 
-            {/* School Section */}
-            <div className="form-section">
-                <div className="section-label">School Information</div>
-
-                <div className="form-row">
-                    <div className="form-field">
-                        <label className="field-label">Intervention Type *</label>
-                        <select
-                            value={intervention}
-                            onChange={(e) => setIntervention(e.target.value as 'Prototype' | 'Propagate')}
-                            className="select-input"
-                        >
-                            <option value="Prototype">Prototype</option>
-                            <option value="Propagate">Propagate</option>
-                        </select>
-                    </div>
-
-                    <div className="form-field">
-                        <label className="field-label">School *</label>
-                        <select
-                            value={selectedSchoolId}
-                            onChange={(e) => setSelectedSchoolId(e.target.value ? parseInt(e.target.value, 10) : '')}
-                            className="select-input"
-                            disabled={loading || schools.length === 0}
-                        >
-                            <option value="">Select school</option>
-                            {schools.map((school) => (
-                                <option key={school.school_id} value={school.school_id}>
-                                    {school.school_name}
-                                </option>
-                            ))}
-                        </select>
-                        {loading && <span className="loading-text">Loading...</span>}
-                    </div>
-                </div>
-
-                <div className="form-field">
-                    <label className="field-label">UDISE Code *</label>
-                    <input
-                        type="text"
-                        value={selectedSchoolId ? schools.find(s => s.school_id === selectedSchoolId)?.udise_code || udiseCode : ''}
-                        readOnly
-                        className="text-input"
-                        style={{ backgroundColor: '#f5f5f5', color: '#666' }}
-                        placeholder="Auto-filled from selected school"
-                    />
-                    <span className="field-hint">Auto-filled based on selected school</span>
-                </div>
-            </div>
-
-            {/* Student Section */}
-            <div className="form-section">
-                <div className="section-label">Student Information</div>
-
-                <div className="form-row">
-                    <div className="form-field">
-                        <label className="field-label">First Name *</label>
-                        <input
-                            type="text"
-                            value={studentFirstName}
-                            onChange={(e) => setStudentFirstName(e.target.value)}
-                            className="text-input"
-                            placeholder="First Name"
-                        />
-                    </div>
-                    <div className="form-field">
-                        <label className="field-label">Last Name *</label>
-                        <input
-                            type="text"
-                            value={studentLastName}
-                            onChange={(e) => setStudentLastName(e.target.value)}
-                            className="text-input"
-                            placeholder="Last Name"
-                        />
-                    </div>
-                </div>
-
-                <div className="form-row" style={{ marginBottom: 0 }}>
-                    <div className="form-field">
-                        <label className="field-label">Gender *</label>
-                        <select
-                            value={gender}
-                            onChange={(e) => setGender(e.target.value as 'Male' | 'Female')}
-                            className="select-input"
-                        >
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                        </select>
-                    </div>
-
-                    <div className="form-field">
-                        <label className="field-label">Class *</label>
-                        <select
-                            value={classGrade}
-                            onChange={(e) => setClassGrade(parseInt(e.target.value, 10))}
-                            className="select-input"
-                        >
-                            {classOptions.map((grade) => (
-                                <option key={grade} value={grade}>Class {grade}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="form-field">
-                        <label className="field-label">Section *</label>
-                        <select
-                            value={section}
-                            onChange={(e) => setSection(e.target.value)}
-                            className="select-input"
-                        >
-                            {sectionOptions.map((sec) => (
-                                <option key={sec} value={sec}>{sec}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <button type="submit" className="submit-button primary">
-                Next →
-            </button>
-        </form>
+            <style jsx>{`
+                .student-login-container { max-width: 600px; margin: 0 auto; }
+                .login-form, .confirmation-card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
+                .section-label { font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+                .section-desc { color: #64748b; font-size: 14px; margin-bottom: 32px; }
+                .form-field { margin-bottom: 24px; }
+                .field-label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 8px; }
+                .text-input { width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 12px; font-size: 16px; outline: none; transition: border-color 0.2s; }
+                .text-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1); }
+                .error-message { background: #fef2f2; color: #b91c1c; padding: 12px; border-radius: 12px; font-size: 14px; margin-bottom: 24px; border: 1px solid #fecaca; }
+                .submit-button { width: 100%; padding: 14px; border-radius: 12px; font-weight: 700; font-size: 16px; cursor: pointer; transition: all 0.2s; }
+                .primary { background: #4f46e5; color: white; border: none; }
+                .primary:hover { background: #4338ca; transform: translateY(-1px); }
+                .primary:disabled { background: #94a3b8; cursor: not-allowed; }
+                
+                .confirm-header { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+                .confirm-icon { font-size: 32px; }
+                .confirm-header h3 { font-size: 22px; font-weight: 800; color: #0f172a; margin: 0; }
+                .details-grid { display: grid; gap: 20px; margin-bottom: 32px; padding: 24px; background: #f8fafc; border-radius: 16px; border: 1px solid #f1f5f9; }
+                .detail-item label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px; }
+                .detail-value { font-size: 18px; font-weight: 600; color: #334155; }
+                .confirm-text { color: #64748b; font-size: 14px; text-align: center; margin-bottom: 24px; }
+                .confirm-actions { display: flex; gap: 12px; }
+                .secondary { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 14px; border-radius: 12px; font-weight: 600; flex: 1; cursor: pointer; }
+                .secondary:hover { background: #f8fafc; }
+            `}</style>
+        </div>
     );
 }

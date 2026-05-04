@@ -13,6 +13,7 @@ import {
     updateImageStatus,
     cacheSchools,
     cacheAssessments,
+    cacheStudents,
     shouldSyncSchools,
     getPendingOfflineGrades,
     markGradesAsSynced,
@@ -186,7 +187,10 @@ async function performSync(): Promise<void> {
             await syncSchools();
         }
 
-        // Step 2: Sync pending submissions — smart logic based on type
+        // Step 2: Sync students for offline login
+        await syncStudents();
+
+        // Step 3: Sync pending submissions — smart logic based on type
         const pendingSubmissions = await getPendingSubmissions();
 
         for (const submission of pendingSubmissions) {
@@ -322,6 +326,42 @@ async function syncAssessments(): Promise<CachedAssessment[]> {
     }
 
     return assessments;
+}
+
+/**
+ * Sync students for offline login
+ */
+async function syncStudents(): Promise<void> {
+    try {
+        const session = await db.table('teacherSession').get(1);
+        if (!session) return;
+
+        const response = await fetch(`/api/students?teacherId=${session.userId}&role=${session.role}`);
+        if (!response.ok) return;
+
+        const students = await response.json();
+        
+        // Map to CachedStudent format
+        const cachedStudents = students.map((s: any) => ({
+            student_id: s.student_id,
+            unique_id: s.unique_id,
+            password: s.password,
+            first_name: s.first_name,
+            last_name: s.last_name,
+            class_grade: s.class_grade,
+            section: s.section,
+            gender: s.gender,
+            school_id: s.school_id,
+            school_name: s.school_name,
+            udise_code: s.udise_code,
+            intervention: s.intervention
+        }));
+
+        await cacheStudents(cachedStudents);
+        console.log(`[Sync] Synced ${cachedStudents.length} students for offline login`);
+    } catch (error) {
+        console.error('[Sync] Failed to sync students:', error);
+    }
 }
 
 /**

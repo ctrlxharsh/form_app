@@ -694,6 +694,26 @@ export default function GradingPage() {
                     <span className={`status-badge ${online ? 'online' : 'offline'}`}>
                         {online ? '● Online' : '○ Offline'}
                     </span>
+                    <button 
+                        onClick={() => router.push('/students')}
+                        className="manage-students-btn"
+                        style={{
+                            padding: '8px 16px',
+                            background: '#f1f5f9',
+                            color: '#475569',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '8px',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        👥 Manage Students
+                    </button>
                     {pendingGradesCount > 0 && (
                         <span className="pending-badge">{pendingGradesCount} pending sync</span>
                     )}

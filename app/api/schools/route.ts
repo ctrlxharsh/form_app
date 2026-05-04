@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
         // M&E, Lead, and Admin roles see all schools (filtered by intervention)
         // Teachers see ALL their assigned schools (no intervention filter for RBAC)
-        if (userId && role && !['M&E', 'Lead', 'Admin'].includes(role)) {
+        if (userId && role && !['M&E', 'Lead', 'Admin', 'Program Manager', 'Program Lead'].includes(role)) {
             // Teacher or other roles - show assigned schools (respecting intervention filter if provided)
             if (intervention && ['Prototype', 'Propagate'].includes(intervention)) {
                 schools = await sql`

@@ -10,6 +10,7 @@
 import React, { useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getTeacherSession, type TeacherSession } from '@/lib/auth';
+import { initSyncListeners, triggerSync } from '@/lib/sync';
 
 interface AuthGuardProps {
     children: ReactNode;
@@ -48,6 +49,18 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
         checkAuth();
     }, [pathname, router]);
+
+    // Initialize sync listeners once on mount
+    useEffect(() => {
+        initSyncListeners();
+    }, []);
+
+    // Trigger sync when session is established
+    useEffect(() => {
+        if (session) {
+            triggerSync();
+        }
+    }, [session]);
 
     // For public paths, render immediately
     if (PUBLIC_PATHS.includes(pathname)) {
