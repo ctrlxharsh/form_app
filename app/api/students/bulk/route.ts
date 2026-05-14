@@ -39,13 +39,25 @@ function getStateCode(stateName: string): string {
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { students, teacherId } = body;
+        const { students, teacherId, role } = body;
 
-        if (!students || !Array.isArray(students)) {
-            return NextResponse.json({ error: 'Invalid students data' }, { status: 400 });
+        if (!students || !Array.isArray(students) || !teacherId) {
+            return NextResponse.json({ error: 'Invalid data or missing teacherId' }, { status: 400 });
         }
 
-        const allSchools = await sql`SELECT school_id, school_name, udise_code, state FROM schools`;
+        const isPrivileged = ['M&E', 'Lead', 'Admin', 'Program Lead', 'Program Manager'].includes(role || 'Teacher');
+
+        let allSchools;
+        if (isPrivileged) {
+            allSchools = await sql`SELECT school_id, school_name, udise_code, state FROM schools`;
+        } else {
+            allSchools = await sql`
+                SELECT s.school_id, s.school_name, s.udise_code, s.state 
+                FROM schools s
+                JOIN teacher_schools ts ON s.school_id = ts.school_id
+                WHERE ts.teacher_id = ${parseInt(teacherId)}
+            `;
+        }
         const schoolMap = new Map();
         allSchools.forEach(s => {
             schoolMap.set(s.school_name.toLowerCase().trim(), s);

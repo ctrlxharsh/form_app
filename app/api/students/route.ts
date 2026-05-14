@@ -102,11 +102,24 @@ export async function POST(request: NextRequest) {
         const { 
             uniqueId, cohortId, firstName, lastName, fathersName, mothersName, 
             schoolId, classGrade, section, password, 
-            dateOfBirth, fathersOccupation, mothersOccupation, address, emailId
+            dateOfBirth, fathersOccupation, mothersOccupation, address, emailId,
+            teacherId, role
         } = body;
 
-        if (!uniqueId || !firstName || !schoolId) {
-            return NextResponse.json({ error: 'uniqueId, firstName, and schoolId are required' }, { status: 400 });
+        if (!uniqueId || !firstName || !schoolId || !teacherId) {
+            return NextResponse.json({ error: 'uniqueId, firstName, schoolId, and teacherId are required' }, { status: 400 });
+        }
+
+        const isPrivileged = ['M&E', 'Lead', 'Admin', 'Program Lead', 'Program Manager'].includes(role || 'Teacher');
+
+        if (!isPrivileged) {
+            const hasAccess = await sql`
+                SELECT 1 FROM teacher_schools 
+                WHERE teacher_id = ${parseInt(teacherId)} AND school_id = ${parseInt(schoolId)}
+            `;
+            if (hasAccess.length === 0) {
+                return NextResponse.json({ error: 'You do not have access to this school' }, { status: 403 });
+            }
         }
 
         const result = await sql`

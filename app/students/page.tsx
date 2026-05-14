@@ -53,18 +53,18 @@ export default function StudentsPage() {
     const [selectedSchool, setSelectedSchool] = useState<string>('');
     const [selectedClass, setSelectedClass] = useState<string>('');
     const [searchQuery, setSearchQuery] = useState('');
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+    // const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    // const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
     
-    const [newStudent, setNewStudent] = useState({
-        uniqueId: '', cohortId: '', firstName: '', lastName: '', fathersName: '', mothersName: '',
-        schoolId: '', classGrade: '', section: 'A', password: '', 
-        dateOfBirth: '', fathersOccupation: '', mothersOccupation: '', address: '', emailId: ''
-    });
+    // const [newStudent, setNewStudent] = useState({
+    //     uniqueId: '', cohortId: '', firstName: '', lastName: '', fathersName: '', mothersName: '',
+    //     schoolId: '', classGrade: '', section: 'A', password: '', 
+    //     dateOfBirth: '', fathersOccupation: '', mothersOccupation: '', address: '', emailId: ''
+    // });
 
-    const [bulkFile, setBulkFile] = useState<File | null>(null);
-    const [bulkErrors, setBulkErrors] = useState<string[]>([]);
-    const [bulkStatus, setBulkStatus] = useState<'idle' | 'parsing' | 'uploading' | 'success' | 'error'>('idle');
+    // const [bulkFile, setBulkFile] = useState<File | null>(null);
+    // const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+    // const [bulkStatus, setBulkStatus] = useState<'idle' | 'parsing' | 'uploading' | 'success' | 'error'>('idle');
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -89,27 +89,27 @@ export default function StudentsPage() {
         init();
     }, [router]);
 
-    useEffect(() => {
-        if (!newStudent.schoolId || !newStudent.classGrade) return;
-        async function generateIds() {
-            const school = schools.find(s => s.school_id === parseInt(newStudent.schoolId));
-            if (!school) return;
-            const stateCode = getStateCode(school.state);
-            const udiseLast5 = school.udise_code.slice(-5);
-            const currentYear = 2026;
-            const passingYear = (currentYear + (10 - parseInt(newStudent.classGrade))).toString().slice(-2);
-            const cohortId = `PJM${stateCode}${passingYear}${udiseLast5}`;
-            try {
-                const res = await fetch(`/api/students/next-id?cohortId=${cohortId}`);
-                if (res.ok) {
-                    const { nextSeq } = await res.json();
-                    const uniqueId = `${cohortId}${nextSeq.toString().padStart(4, '0')}`;
-                    setNewStudent(prev => ({ ...prev, cohortId, uniqueId }));
-                }
-            } catch (err) { console.error('ID gen error:', err); }
-        }
-        generateIds();
-    }, [newStudent.schoolId, newStudent.classGrade, schools]);
+    // useEffect(() => {
+    //     if (!newStudent.schoolId || !newStudent.classGrade) return;
+    //     async function generateIds() {
+    //         const school = schools.find(s => s.school_id === parseInt(newStudent.schoolId));
+    //         if (!school) return;
+    //         const stateCode = getStateCode(school.state);
+    //         const udiseLast5 = school.udise_code.slice(-5);
+    //         const currentYear = 2026;
+    //         const passingYear = (currentYear + (10 - parseInt(newStudent.classGrade))).toString().slice(-2);
+    //         const cohortId = `PJM${stateCode}${passingYear}${udiseLast5}`;
+    //         try {
+    //             const res = await fetch(`/api/students/next-id?cohortId=${cohortId}`);
+    //             if (res.ok) {
+    //                 const { nextSeq } = await res.json();
+    //                 const uniqueId = `${cohortId}${nextSeq.toString().padStart(4, '0')}`;
+    //                 setNewStudent(prev => ({ ...prev, cohortId, uniqueId }));
+    //             }
+    //         } catch (err) { console.error('ID gen error:', err); }
+    //     }
+    //     generateIds();
+    // }, [newStudent.schoolId, newStudent.classGrade, schools]);
 
     const filteredStudents = useMemo(() => {
         let list = students;
@@ -122,47 +122,47 @@ export default function StudentsPage() {
         return list;
     }, [students, selectedSchool, selectedClass, searchQuery]);
 
-    const handleAddStudent = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        setError(null);
-        try {
-            const res = await fetch('/api/students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newStudent) });
-            if (res.ok) {
-                const addedStudent = await res.json();
-                setStudents(prev => [addedStudent, ...prev]);
-                setIsAddModalOpen(false);
-                setNewStudent({ uniqueId: '', cohortId: '', firstName: '', lastName: '', fathersName: '', mothersName: '', schoolId: '', classGrade: '', section: 'A', password: '', dateOfBirth: '', fathersOccupation: '', mothersOccupation: '', address: '', emailId: '' });
-            } else { setError((await res.json()).error || 'Failed to add student'); }
-        } catch (err) { setError('An error occurred'); } finally { setIsSubmitting(false); }
-    };
+    // const handleAddStudent = async (e: React.FormEvent) => {
+    //     e.preventDefault();
+    //     setIsSubmitting(true);
+    //     setError(null);
+    //     try {
+    //         const res = await fetch('/api/students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({...newStudent, teacherId: session?.userId, role: session?.role}) });
+    //         if (res.ok) {
+    //             const addedStudent = await res.json();
+    //             setStudents(prev => [addedStudent, ...prev]);
+    //             setIsAddModalOpen(false);
+    //             setNewStudent({ uniqueId: '', cohortId: '', firstName: '', lastName: '', fathersName: '', mothersName: '', schoolId: '', classGrade: '', section: 'A', password: '', dateOfBirth: '', fathersOccupation: '', mothersOccupation: '', address: '', emailId: '' });
+    //         } else { setError((await res.json()).error || 'Failed to add student'); }
+    //     } catch (err) { setError('An error occurred'); } finally { setIsSubmitting(false); }
+    // };
 
-    const downloadTemplate = () => {
-        const headers = ['schoolName', 'classGrade', 'firstName', 'lastName', 'password', 'section', 'fatherName', 'motherName', 'dateOfBirth', 'fathersOccupation', 'mothersOccupation', 'address', 'emailId'];
-        const blob = new Blob([headers.join(',') + '\nExample School,10,John,Doe,01012001,A,Father,Mother,2010-01-01,Engineer,Teacher,123 St,john@ex.com'], { type: 'text/csv' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pijam_students_template.csv'; a.click();
-    };
+    // const downloadTemplate = () => {
+    //     const headers = ['schoolName', 'classGrade', 'firstName', 'lastName', 'password', 'section', 'fatherName', 'motherName', 'dateOfBirth', 'fathersOccupation', 'mothersOccupation', 'address', 'emailId'];
+    //     const blob = new Blob([headers.join(',') + '\nExample School,10,John,Doe,01012001,A,Father,Mother,2010-01-01,Engineer,Teacher,123 St,john@ex.com'], { type: 'text/csv' });
+    //     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pijam_students_template.csv'; a.click();
+    // };
 
-    const handleBulkUpload = async () => {
-        if (!bulkFile) return;
-        setBulkStatus('parsing');
-        Papa.parse(bulkFile, {
-            header: true, skipEmptyLines: true,
-            complete: async (results) => {
-                setBulkStatus('uploading');
-                try {
-                    const res = await fetch('/api/students/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ students: results.data, teacherId: session?.userId }) });
-                    const data = await res.json();
-                    if (res.ok) {
-                        setBulkStatus('success');
-                        const studentRes = await fetch(`/api/students?teacherId=${session?.userId}&role=${session?.role}`);
-                        if (studentRes.ok) setStudents(await studentRes.json());
-                        setTimeout(() => setIsBulkModalOpen(false), 2000);
-                    } else { setBulkErrors(data.errors || [data.error || 'Upload failed']); setBulkStatus('error'); }
-                } catch (err) { setBulkErrors(['Network error']); setBulkStatus('error'); }
-            }
-        });
-    };
+    // const handleBulkUpload = async () => {
+    //     if (!bulkFile) return;
+    //     setBulkStatus('parsing');
+    //     Papa.parse(bulkFile, {
+    //         header: true, skipEmptyLines: true,
+    //         complete: async (results) => {
+    //             setBulkStatus('uploading');
+    //             try {
+    //                 const res = await fetch('/api/students/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ students: results.data, teacherId: session?.userId, role: session?.role }) });
+    //                 const data = await res.json();
+    //                 if (res.ok) {
+    //                     setBulkStatus('success');
+    //                     const studentRes = await fetch(`/api/students?teacherId=${session?.userId}&role=${session?.role}`);
+    //                     if (studentRes.ok) setStudents(await studentRes.json());
+    //                     setTimeout(() => setIsBulkModalOpen(false), 2000);
+    //                 } else { setBulkErrors(data.errors || [data.error || 'Upload failed']); setBulkStatus('error'); }
+    //             } catch (err) { setBulkErrors(['Network error']); setBulkStatus('error'); }
+    //         }
+    //     });
+    // };
 
     if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div></div>;
 
@@ -174,8 +174,8 @@ export default function StudentsPage() {
                     <div><h1>👥 Student Management</h1><p>View and manage students in your assigned schools</p></div>
                 </div>
                 <div className="header-actions">
-                    <button onClick={() => setIsBulkModalOpen(true)} className="bulk-btn">📤 Bulk Upload</button>
-                    <button onClick={() => setIsAddModalOpen(true)} className="add-student-btn">+ Add Student</button>
+                    {/* <button onClick={() => setIsBulkModalOpen(true)} className="bulk-btn">📤 Bulk Upload</button>
+                    <button onClick={() => setIsAddModalOpen(true)} className="add-student-btn">+ Add Student</button> */}
                 </div>
             </header>
 
@@ -212,56 +212,11 @@ export default function StudentsPage() {
                 )}
             </div>
 
-            {/* Manual Add Modal */}
-            {isAddModalOpen && (
-                <div className="modal-overlay" onClick={() => setIsAddModalOpen(false)}>
-                    <div className="modal-content-wrapper" onClick={e => e.stopPropagation()}>
-                        <div className="modal-header"><h2>Add New Student</h2><button onClick={() => setIsAddModalOpen(false)} className="close-btn">&times;</button></div>
-                        <div className="modal-body-scroll">
-                            <form onSubmit={handleAddStudent}>
-                                <div className="form-grid">
-                                    <div className="form-group"><label>School*</label><select required value={newStudent.schoolId} onChange={e => setNewStudent({...newStudent, schoolId: e.target.value})}><option value="">Select School</option>{schools.map(s => <option key={s.school_id} value={s.school_id}>{s.school_name}</option>)}</select></div>
-                                    <div className="form-group"><label>Class*</label><select required value={newStudent.classGrade} onChange={e => setNewStudent({...newStudent, classGrade: e.target.value})}><option value="">Select Class</option>{[4, 5, 6, 7, 8, 9, 10].map(c => <option key={c} value={c}>Class {c}</option>)}</select></div>
-                                    <div className="form-group"><label>Unique ID (Auto)</label><input readOnly disabled className="bg-gray-50" value={newStudent.uniqueId} /></div>
-                                    <div className="form-group"><label>Password*</label><input required placeholder="01012001" value={newStudent.password} onChange={e => setNewStudent({...newStudent, password: e.target.value})} /></div>
-                                    <div className="form-group"><label>First Name*</label><input required value={newStudent.firstName} onChange={e => setNewStudent({...newStudent, firstName: e.target.value})} /></div>
-                                    <div className="form-group"><label>Last Name</label><input value={newStudent.lastName} onChange={e => setNewStudent({...newStudent, lastName: e.target.value})} /></div>
-                                    <div className="form-group"><label>Date of Birth</label><input type="date" value={newStudent.dateOfBirth} onChange={e => setNewStudent({...newStudent, dateOfBirth: e.target.value})} /></div>
-                                    <div className="form-group"><label>Email ID</label><input type="email" value={newStudent.emailId} onChange={e => setNewStudent({...newStudent, emailId: e.target.value})} /></div>
-                                    <div className="form-group"><label>Father's Name</label><input value={newStudent.fathersName} onChange={e => setNewStudent({...newStudent, fathersName: e.target.value})} /></div>
-                                    <div className="form-group"><label>Father's Occupation</label><input value={newStudent.fathersOccupation} onChange={e => setNewStudent({...newStudent, fathersOccupation: e.target.value})} /></div>
-                                    <div className="form-group"><label>Mother's Name</label><input value={newStudent.mothersName} onChange={e => setNewStudent({...newStudent, mothersName: e.target.value})} /></div>
-                                    <div className="form-group"><label>Mother's Occupation</label><input value={newStudent.mothersOccupation} onChange={e => setNewStudent({...newStudent, mothersOccupation: e.target.value})} /></div>
-                                    <div className="form-group col-span-2"><label>Address</label><input value={newStudent.address} onChange={e => setNewStudent({...newStudent, address: e.target.value})} /></div>
-                                    <div className="form-group"><label>Section*</label><select required value={newStudent.section} onChange={e => setNewStudent({...newStudent, section: e.target.value})}>{['A', 'B', 'C', 'D', 'E', 'F', 'G', 'N/A'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-                                </div>
-                                {error && <div className="error-message">{error}</div>}
-                                <div className="modal-footer"><button type="button" onClick={() => setIsAddModalOpen(false)} className="cancel-btn">Cancel</button><button type="submit" disabled={isSubmitting || !newStudent.uniqueId} className="submit-btn">{isSubmitting ? 'Adding...' : 'Add Student'}</button></div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Manual Add Modal commented out */}
+            {/* isAddModalOpen && ( ... ) */}
 
-            {/* Bulk Upload Modal */}
-            {isBulkModalOpen && (
-                <div className="modal-overlay" onClick={() => setIsBulkModalOpen(false)}>
-                    <div className="modal-content-wrapper max-w-[550px]" onClick={e => e.stopPropagation()}>
-                        <div className="modal-header"><h2>Bulk Upload Students</h2><button onClick={() => setIsBulkModalOpen(false)} className="close-btn">&times;</button></div>
-                        <div className="modal-body p-6">
-                            <div className="mb-6 p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                                <h3 className="font-bold text-indigo-900 mb-1">Steps</h3>
-                                <ul className="text-xs text-indigo-800 space-y-1 list-disc ml-4"><li>Download the template.</li><li>Fill details (School Name must match).</li><li>Upload the CSV file.</li></ul>
-                                <button onClick={downloadTemplate} className="mt-3 text-xs font-bold text-indigo-600 hover:underline">📥 Download CSV Template</button>
-                            </div>
-                            <div className="upload-zone border-2 border-dashed border-gray-300 rounded-xl p-6 text-center cursor-pointer hover:border-indigo-400 transition-colors" onClick={() => fileInputRef.current?.click()}><input type="file" accept=".csv" ref={fileInputRef} className="hidden" onChange={e => setBulkFile(e.target.files?.[0] || null)} /><div className="text-3xl mb-1">📄</div>{bulkFile ? <p className="font-bold text-sm text-indigo-600">{bulkFile.name}</p> : <p className="text-xs text-gray-500">Click or drag CSV file here</p>}</div>
-                            {bulkErrors.length > 0 && <div className="error-list mt-4 max-h-32 overflow-y-auto"><h4 className="text-red-600 font-bold text-xs mb-1">Errors:</h4>{bulkErrors.map((e, i) => <div key={i} className="text-[10px] text-red-500 py-1 border-b border-red-50">{e}</div>)}</div>}
-                            {bulkStatus === 'success' && <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm text-center font-bold">✅ Success!</div>}
-                            <div className="modal-footer mt-6"><button type="button" onClick={() => setIsBulkModalOpen(false)} className="cancel-btn">Cancel</button><button onClick={handleBulkUpload} disabled={!bulkFile || bulkStatus === 'uploading' || bulkStatus === 'success'} className="submit-btn">{bulkStatus === 'uploading' ? '...' : 'Upload'}</button></div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Bulk Upload Modal commented out */}
+            {/* isBulkModalOpen && ( ... ) */}
 
             <style jsx>{`
                 .students-container { max-width: 1400px; margin: 0 auto; padding: 40px 20px; font-family: 'Inter', sans-serif; }
