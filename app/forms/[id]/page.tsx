@@ -138,10 +138,14 @@ export default function FormPage({ params }: PageProps) {
             <div className="page-container">
                 <OfflineStatus />
                 <div className="error-page">
-                    <h1>Error</h1>
+                    <h1 className="flex items-center justify-center gap-2 text-error">
+                        <span className="material-symbols-rounded text-3xl">error</span>
+                        Error
+                    </h1>
                     <p className="error-message">{error}</p>
-                    <button onClick={() => router.push('/')} className="back-button">
-                        ← Back to Home
+                    <button onClick={() => router.push('/')} className="back-button flex items-center justify-center gap-2">
+                        <span className="material-symbols-rounded">arrow_back</span>
+                        Back to Home
                     </button>
                 </div>
             </div>
@@ -155,7 +159,10 @@ export default function FormPage({ params }: PageProps) {
                 <OfflineStatus />
                 <div className="completion-container">
                     <div className="completion-card">
-                        <h1 className="completion-title">✅ Assessment Submitted!</h1>
+                        <h1 className="completion-title flex items-center justify-center gap-2">
+                            <span className="material-symbols-rounded text-success text-3xl">check_circle</span>
+                            Assessment Submitted!
+                        </h1>
 
                         {submissionResult.isOffline ? (
                             <>
@@ -177,7 +184,7 @@ export default function FormPage({ params }: PageProps) {
                             </>
                         )}
 
-                        <button onClick={handleSubmitAnother} className="submit-button primary">
+                        <button onClick={handleSubmitAnother} className="submit-button primary flex items-center justify-center gap-2">
                             Submit Another Assessment
                         </button>
                     </div>

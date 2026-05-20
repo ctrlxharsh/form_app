@@ -62,7 +62,7 @@ export function OfflineStatus() {
             {/* Offline indicator */}
             {!online && (
                 <div className="offline-badge">
-                    <span className="offline-icon">📡</span>
+                    <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>wifi_off</span>
                     <span>Offline</span>
                 </div>
             )}
@@ -113,8 +113,8 @@ export function OfflineIndicator() {
     if (online === null || online) return null;
 
     return (
-        <div className="offline-indicator">
-            <span className="offline-icon">📡</span>
+        <div className="offline-indicator" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>wifi_off</span>
             <span>Offline Mode</span>
         </div>
     );

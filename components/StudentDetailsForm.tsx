@@ -161,17 +161,29 @@ export function StudentDetailsForm({ onSubmit }: StudentDetailsFormProps) {
                             />
                         </div>
 
-                        {error && <div className="error-message">⚠️ {error}</div>}
+                        {error && (
+                            <div className="error-message" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span className="material-symbols-rounded" style={{ color: 'var(--color-error)' }}>warning</span>
+                                <span>{error}</span>
+                            </div>
+                        )}
 
                         <button type="submit" disabled={loading} className="submit-button primary">
-                            {loading ? 'Verifying...' : 'Login →'}
+                            {loading ? 'Verifying...' : (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%' }}>
+                                    Login
+                                    <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>arrow_forward</span>
+                                </span>
+                            )}
                         </button>
                     </div>
                 </form>
             ) : (
                 <div className="confirmation-card">
                     <div className="confirm-header">
-                        <div className="confirm-icon">👤</div>
+                        <div className="confirm-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span className="material-symbols-rounded" style={{ fontSize: '32px', color: 'var(--color-primary)' }}>account_circle</span>
+                        </div>
                         <h3>Confirm Your Identity</h3>
                     </div>
                     
@@ -197,37 +209,40 @@ export function StudentDetailsForm({ onSubmit }: StudentDetailsFormProps) {
                             Not Me (Back)
                         </button>
                         <button onClick={handleConfirm} className="submit-button primary">
-                            Yes, Start Assessment →
+                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%' }}>
+                                Yes, Start Assessment
+                                <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>arrow_forward</span>
+                            </span>
                         </button>
                     </div>
                 </div>
             )}
 
             <style jsx>{`
-                .student-login-container { max-width: 600px; margin: 0 auto; }
-                .login-form, .confirmation-card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
-                .section-label { font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
-                .section-desc { color: #64748b; font-size: 14px; margin-bottom: 32px; }
+                .student-login-container { max-width: 600px; margin: 0 auto; font-family: var(--font-sans); }
+                .login-form, .confirmation-card { background: white; padding: 40px; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); border: 1px solid var(--color-border); }
+                .section-label { font-size: 22px; font-weight: 700; color: var(--color-primary); margin-bottom: 8px; font-family: var(--font-sans); }
+                .section-desc { color: var(--color-text-secondary); font-size: 14px; margin-bottom: 32px; font-family: var(--font-sans); }
                 .form-field { margin-bottom: 24px; }
-                .field-label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 8px; }
-                .text-input { width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 12px; font-size: 16px; outline: none; transition: border-color 0.2s; }
-                .text-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1); }
-                .error-message { background: #fef2f2; color: #b91c1c; padding: 12px; border-radius: 12px; font-size: 14px; margin-bottom: 24px; border: 1px solid #fecaca; }
-                .submit-button { width: 100%; padding: 14px; border-radius: 12px; font-weight: 700; font-size: 16px; cursor: pointer; transition: all 0.2s; }
-                .primary { background: #4f46e5; color: white; border: none; }
-                .primary:hover { background: #4338ca; transform: translateY(-1px); }
-                .primary:disabled { background: #94a3b8; cursor: not-allowed; }
+                .field-label { display: block; font-size: 13px; font-weight: 600; color: var(--color-primary); margin-bottom: 8px; font-family: var(--font-sans); }
+                .text-input { width: 100%; padding: 12px 16px; border: 1.5px solid var(--color-border); border-radius: var(--radius-md); font-size: 16px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; font-family: var(--font-sans); background: var(--color-bg); color: var(--color-text); }
+                .text-input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px rgba(78, 205, 196, 0.2); background: white; }
+                .error-message { background: #fee2e2; color: var(--color-error); padding: 12px; border-radius: var(--radius-md); font-size: 14px; margin-bottom: 24px; border: 1.5px solid #fca5a5; font-family: var(--font-sans); }
+                .submit-button { width: 100%; padding: 14px; border-radius: var(--radius-md); font-weight: 700; font-size: 16px; cursor: pointer; transition: all 0.2s; font-family: var(--font-sans); }
+                .primary { background: var(--color-primary); color: white; border: none; }
+                .primary:hover { background: #1c2e54; transform: translateY(-1.5px); box-shadow: 0 4px 12px rgba(27, 43, 78, 0.25); }
+                .primary:disabled { background: var(--color-border); color: var(--color-text-secondary); cursor: not-allowed; }
                 
                 .confirm-header { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
                 .confirm-icon { font-size: 32px; }
-                .confirm-header h3 { font-size: 22px; font-weight: 800; color: #0f172a; margin: 0; }
-                .details-grid { display: grid; gap: 20px; margin-bottom: 32px; padding: 24px; background: #f8fafc; border-radius: 16px; border: 1px solid #f1f5f9; }
-                .detail-item label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px; }
-                .detail-value { font-size: 18px; font-weight: 600; color: #334155; }
-                .confirm-text { color: #64748b; font-size: 14px; text-align: center; margin-bottom: 24px; }
+                .confirm-header h3 { font-size: 22px; font-weight: 800; color: var(--color-primary); margin: 0; font-family: var(--font-sans); }
+                .details-grid { display: grid; gap: 20px; margin-bottom: 32px; padding: 24px; background: var(--color-bg); border-radius: var(--radius-md); border: 1.5px solid var(--color-border); }
+                .detail-item label { font-size: 11px; font-weight: 700; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px; font-family: var(--font-sans); }
+                .detail-value { font-size: 18px; font-weight: 600; color: var(--color-primary); font-family: var(--font-sans); }
+                .confirm-text { color: var(--color-text-secondary); font-size: 14px; text-align: center; margin-bottom: 24px; font-family: var(--font-sans); }
                 .confirm-actions { display: flex; gap: 12px; }
-                .secondary { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 14px; border-radius: 12px; font-weight: 600; flex: 1; cursor: pointer; }
-                .secondary:hover { background: #f8fafc; }
+                .secondary { background: white; border: 1.5px solid var(--color-border); color: var(--color-text-secondary); padding: 14px; border-radius: var(--radius-md); font-weight: 600; flex: 1; cursor: pointer; transition: all 0.2s; font-family: var(--font-sans); }
+                .secondary:hover { background: var(--color-bg); border-color: var(--color-text-secondary); }
             `}</style>
         </div>
     );

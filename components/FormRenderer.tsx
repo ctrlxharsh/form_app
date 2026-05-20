@@ -468,8 +468,9 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
 
                 {/* Section Error Banner */}
                 {error && (
-                    <div className="error-message section-error">
-                        ⚠️ {error}
+                    <div className="error-message section-error" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="material-symbols-rounded" style={{ color: 'var(--color-error)' }}>warning</span>
+                        <span>{error}</span>
                     </div>
                 )}
 
@@ -491,12 +492,23 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                 </div>
 
                 {/* Navigation */}
-                <div className="section-navigation">
-                    <button onClick={handlePrevSection} className="nav-button secondary">
-                        ← Previous
+                <div className="section-navigation" style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
+                    <button onClick={handlePrevSection} className="nav-button secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', flex: 1, minHeight: '48px' }}>
+                        <span className="material-symbols-rounded">arrow_back</span>
+                        Previous
                     </button>
-                    <button onClick={handleNextSection} className="nav-button primary">
-                        {currentSectionIndex < totalSections - 1 ? 'Next →' : 'Review & Submit →'}
+                    <button onClick={handleNextSection} className="nav-button primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', flex: 1, minHeight: '48px' }}>
+                        {currentSectionIndex < totalSections - 1 ? (
+                            <>
+                                Next
+                                <span className="material-symbols-rounded">arrow_forward</span>
+                            </>
+                        ) : (
+                            <>
+                                Review & Submit
+                                <span className="material-symbols-rounded">arrow_forward</span>
+                            </>
+                        )}
                     </button>
                 </div>
             </div>
@@ -511,7 +523,9 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
         return (
             <div className="form-wrapper">
                 <div className="confirm-container">
-                    <div className="confirm-icon">📋</div>
+                    <div className="confirm-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span className="material-symbols-rounded" style={{ fontSize: '48px', color: 'var(--color-primary)' }}>assignment</span>
+                    </div>
                     <h2 className="confirm-title">Ready to Submit?</h2>
 
                     <div className="confirm-summary">
@@ -550,13 +564,16 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                             onClick={handleBackFromConfirm}
                             className="nav-button secondary"
                             disabled={isSubmitting}
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', minHeight: '48px' }}
                         >
-                            ← No, Go Back
+                            <span className="material-symbols-rounded">arrow_back</span>
+                            No, Go Back
                         </button>
                         <button
                             onClick={handleSubmit}
                             className="nav-button primary submit-final"
                             disabled={isSubmitting}
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', minHeight: '48px' }}
                         >
                             {isSubmitting ? (
                                 <>
@@ -564,7 +581,10 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                                     Submitting...
                                 </>
                             ) : (
-                                '✓ Yes, Submit'
+                                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                    <span className="material-symbols-rounded">check_circle</span>
+                                    Yes, Submit
+                                </span>
                             )}
                         </button>
                     </div>
@@ -596,8 +616,9 @@ function FormHeader({
     return (
         <div className="form-header-bar">
             <div className="form-header-content">
-                <Link href="/" className="back-to-home">
-                    ← Back to Dashboard
+                <Link href="/" className="back-to-home" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>arrow_back</span>
+                    Back to Dashboard
                 </Link>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <h1 className="form-title">{formData.title}</h1>
@@ -616,7 +637,8 @@ function FormHeader({
                             whiteSpace: 'nowrap',
                             flexShrink: 0
                         }}>
-                            🌐 {formData.language}
+                            <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>language</span>
+                            {formData.language}
                         </span>
                     )}
                 </div>
@@ -626,10 +648,14 @@ function FormHeader({
             </div>
             <div className="form-header-actions">
                 {justSaved ? (
-                    <span className="cached-badge">✓ Saved Offline</span>
+                    <span className="cached-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>check_circle</span>
+                        Saved Offline
+                    </span>
                 ) : (
-                    <button onClick={handleSave} className="save-offline-btn">
-                        💾 {isCached ? 'Update Offline' : 'Save Offline'}
+                    <button onClick={handleSave} className="save-offline-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>save</span>
+                        {isCached ? 'Update Offline' : 'Save Offline'}
                     </button>
                 )}
             </div>

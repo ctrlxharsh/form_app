@@ -102,27 +102,45 @@ export function isOnline(): boolean {
 // ============ CONNECTIVITY CHECK ============
 
 /**
+ * Track consecutive failures to prevent single-request blips
+ * from toggling the UI to "Offline".
+ * Requires 2 consecutive failures to report offline.
+ */
+let consecutiveFailures = 0;
+const FAILURES_BEFORE_OFFLINE = 2;
+
+/**
  * Check actual internet connectivity by making a real request.
  * navigator.onLine can be unreliable on flaky connections.
  * This is EXPORTED so components can use it before making API calls.
+ * 
+ * Uses hysteresis: requires multiple consecutive failures before
+ * reporting offline, but a single success immediately reports online.
  */
 export async function checkActualConnectivity(): Promise<boolean> {
     // Quick check first - if navigator says offline, trust it
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        consecutiveFailures = FAILURES_BEFORE_OFFLINE; // immediately mark as offline
         return false;
     }
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch('/api/health', {
             method: 'HEAD',
             signal: controller.signal,
             cache: 'no-store'
         });
         clearTimeout(timeoutId);
-        return response.ok;
+        if (response.ok) {
+            consecutiveFailures = 0; // reset on success
+            return true;
+        }
+        consecutiveFailures++;
+        return consecutiveFailures < FAILURES_BEFORE_OFFLINE;
     } catch {
-        return false;
+        consecutiveFailures++;
+        return consecutiveFailures < FAILURES_BEFORE_OFFLINE;
     }
 }
 

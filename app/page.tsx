@@ -260,11 +260,12 @@ export default function HomePage() {
     <div className="app-container">
       {/* Sidebar - Desktop */}
       <aside className="app-sidebar">
-        <div className="sidebar-header">
-          <h2>📝 PiJam</h2>
+        <div className="sidebar-header" style={{ paddingBottom: '16px', borderBottom: '1.5px solid var(--color-border)' }}>
+          <img src="/pijamLogo.svg" alt="PiJam Logo" style={{ height: '36px', width: 'auto', display: 'block' }} />
           {mounted && (
-            <span className={`status-badge ${online ? 'online' : 'offline'}`}>
-              {online ? '● Online' : '○ Offline'}
+            <span className={`status-badge ${online ? 'online' : 'offline'}`} style={{ fontSize: '11px', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>{online ? 'wifi' : 'wifi_off'}</span>
+              {online ? 'Online' : 'Offline'}
             </span>
           )}
         </div>
@@ -288,8 +289,13 @@ export default function HomePage() {
               onClick={handleSyncSchools}
               disabled={!online || syncingSchools}
               className="sync-btn"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
             >
-              {syncingSchools ? <span className="mini-spinner" /> : '↻'}
+              {syncingSchools ? (
+                <span className="mini-spinner" />
+              ) : (
+                <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>sync</span>
+              )}
             </button>
           </div>
 
@@ -302,8 +308,13 @@ export default function HomePage() {
               onClick={handleSyncAssessments}
               disabled={!online || syncingAssessments}
               className="sync-btn"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
             >
-              {syncingAssessments ? <span className="mini-spinner" /> : '↻'}
+              {syncingAssessments ? (
+                <span className="mini-spinner" />
+              ) : (
+                <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>sync</span>
+              )}
             </button>
           </div>
         </div>
@@ -317,10 +328,10 @@ export default function HomePage() {
                 <div key={sub.localId} className="pending-submission-item">
                   <div className="pending-sub-info">
                     <span className="pending-sub-name">{sub.studentFirstName} {sub.studentLastName}</span>
-                    <span className={`pending-sub-status ${sub.status}`}>
-                      {sub.status === 'pending' && '⏳ Waiting'}
-                      {sub.status === 'syncing' && '⟳ Syncing'}
-                      {sub.status === 'failed' && '✗ Failed'}
+                    <span className={`pending-sub-status ${sub.status}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      {sub.status === 'pending' && <><span className="material-symbols-rounded" style={{ fontSize: '12px' }}>schedule</span> Waiting</>}
+                      {sub.status === 'syncing' && <><span className="material-symbols-rounded" style={{ fontSize: '12px', animation: 'spin 1s linear infinite' }}>sync</span> Syncing</>}
+                      {sub.status === 'failed' && <><span className="material-symbols-rounded" style={{ fontSize: '12px' }}>error</span> Failed</>}
                     </span>
                   </div>
                 </div>
@@ -338,15 +349,19 @@ export default function HomePage() {
 
         {/* Teacher Portal */}
         <div className="sidebar-section teacher-section">
-          <h3>👩‍🏫 Teacher Portal</h3>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>school</span>
+            Teacher Portal
+          </h3>
           {teacherSession ? (
             <>
               <div className="teacher-info">
                 <span className="teacher-name">{teacherSession.fullName}</span>
                 <span className="teacher-role">{teacherSession.role}</span>
               </div>
-              <Link href="/grading" className="teacher-link">
-                📝 Grading Dashboard
+              <Link href="/grading" className="teacher-link" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>edit_note</span>
+                Grading Dashboard
               </Link>
               <button
                 onClick={async () => {
@@ -354,13 +369,16 @@ export default function HomePage() {
                   setTeacherSession(null);
                 }}
                 className="logout-btn"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
               >
-                🚪 Logout
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>logout</span>
+                Logout
               </button>
             </>
           ) : (
-            <Link href="/login" className="teacher-login-link">
-              🔐 Teacher Login
+            <Link href="/login" className="teacher-login-link" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>vpn_key</span>
+              Teacher Login
             </Link>
           )}
         </div>
@@ -368,11 +386,11 @@ export default function HomePage() {
 
       {/* Mobile Header */}
       <div className="mobile-header">
-        <h2>📝 PiJam</h2>
+        <img src="/pijamLogo.svg" alt="PiJam Logo" style={{ height: '30px', width: 'auto', display: 'block' }} />
         <div className="mobile-header-right">
           {mounted && (
-            <span className={`status-badge ${online ? 'online' : 'offline'}`}>
-              {online ? '●' : '○'}
+            <span className={`status-badge ${online ? 'online' : 'offline'}`} style={{ fontSize: '11px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center' }}>
+              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>{online ? 'wifi' : 'wifi_off'}</span>
             </span>
           )}
           {pendingCount > 0 && (
@@ -381,8 +399,9 @@ export default function HomePage() {
           <button
             className="mobile-menu-btn"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            style={{ display: 'inline-flex', alignItems: 'center' }}
           >
-            ☰
+            <span className="material-symbols-rounded">menu</span>
           </button>
         </div>
       </div>
@@ -393,7 +412,9 @@ export default function HomePage() {
           <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
             <div className="mobile-menu-header">
               <span>Menu</span>
-              <button onClick={() => setMobileMenuOpen(false)}>✕</button>
+              <button onClick={() => setMobileMenuOpen(false)} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>close</span>
+              </button>
             </div>
 
             {pendingCount > 0 && (
@@ -416,8 +437,10 @@ export default function HomePage() {
                     href={`/forms/${form.formId}`}
                     className="mobile-cached-item"
                     onClick={() => setMobileMenuOpen(false)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    💾 {form.formData.title}
+                    <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>save</span>
+                    {form.formData.title}
                   </Link>
                 ))}
               </div>
@@ -425,19 +448,23 @@ export default function HomePage() {
 
             {/* Teacher Portal - Mobile */}
             <div className="mobile-menu-section" style={{ borderTop: '1px solid #eee', paddingTop: '16px', marginTop: '16px' }}>
-              <h4>👩‍🏫 Teacher Portal</h4>
+              <h4 style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>school</span>
+                Teacher Portal
+              </h4>
               {teacherSession ? (
                 <>
                   <div style={{ marginBottom: '12px', fontSize: '14px', color: '#666' }}>
-                    {teacherSession.fullName}
+                     {teacherSession.fullName}
                   </div>
                   <Link
                     href="/grading"
                     className="mobile-cached-item"
                     onClick={() => setMobileMenuOpen(false)}
-                    style={{ background: '#f0f4ff', color: '#4c6ef5', fontWeight: 500 }}
+                    style={{ background: '#f0f4ff', color: '#4c6ef5', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    📝 Grading Dashboard
+                    <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>edit_note</span>
+                    Grading Dashboard
                   </Link>
                   <button
                     onClick={async () => {
@@ -446,9 +473,10 @@ export default function HomePage() {
                       setMobileMenuOpen(false);
                     }}
                     className="logout-btn"
-                    style={{ width: '100%', marginTop: '12px' }}
+                    style={{ width: '100%', marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                   >
-                    🚪 Logout
+                    <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>logout</span>
+                    Logout
                   </button>
                 </>
               ) : (
@@ -456,8 +484,10 @@ export default function HomePage() {
                   href="/login"
                   className="mobile-cached-item"
                   onClick={() => setMobileMenuOpen(false)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
-                  🔐 Teacher Login
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>vpn_key</span>
+                  Teacher Login
                 </Link>
               )}
             </div>
@@ -467,9 +497,24 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="app-main">
-        <header className="main-header">
-          <h1>Submit Assessment</h1>
-          <p>Select an assessment to complete and submit</p>
+        <header className="main-header" style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+          marginBottom: '32px',
+          paddingBottom: '16px',
+          borderBottom: '1px solid var(--color-border)'
+        }}>
+          <img src="/pijamLogo.svg" alt="PiJam Logo" style={{ height: '32px', width: 'auto' }} />
+          <h1 style={{
+            fontSize: '24px',
+            fontWeight: 600,
+            margin: 0,
+            color: 'var(--color-text)',
+            fontFamily: 'var(--font-sans)'
+          }}>
+            PiJam Assessment Portal
+          </h1>
         </header>
 
         {/* Class Filter */}
@@ -509,7 +554,9 @@ export default function HomePage() {
         {/* Offline Mode Banner */}
         {mounted && !online && !loading && (
           <div className="offline-banner">
-            <span className="offline-banner-icon">📡</span>
+            <span className="offline-banner-icon">
+              <span className="material-symbols-rounded" style={{ fontSize: '28px', color: '#b06000' }}>wifi_off</span>
+            </span>
             <div className="offline-banner-content">
               <strong>You are offline</strong>
               <span>Only showing saved forms. {cachedForms.length} form(s) available.</span>
@@ -528,7 +575,10 @@ export default function HomePage() {
         {/* Error */}
         {error && (
           <div className="error-banner">
-            <span>⚠️ {error}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--color-error)' }}>warning</span>
+              {error}
+            </span>
             <button onClick={() => setError(null)}>×</button>
           </div>
         )}
@@ -653,7 +703,7 @@ function AssessmentGroupCard({
       >
         <div className="card-header">
           <span className="card-class">Class {group.class_grade}</span>
-          {isCached && <span className="card-cached">💾</span>}
+          {isCached && <span className="card-cached" style={{ display: 'inline-flex', alignItems: 'center' }}><span className="material-symbols-rounded" style={{ fontSize: '16px', color: 'var(--color-success)' }}>save</span></span>}
           {assessment.language && assessment.language !== 'English' && (
             <span
               className="card-lang-badge"
@@ -674,8 +724,18 @@ function AssessmentGroupCard({
         <h3 className="card-title">{group.title}</h3>
         {group.description && <p className="card-desc">{group.description}</p>}
         <div className="card-footer">
-          <span className="card-action">
-            {isDisabled ? '🔒 Not saved' : 'Start →'}
+          <span className="card-action" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            {isDisabled ? (
+              <>
+                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>cloud_off</span>
+                Not saved
+              </>
+            ) : (
+              <>
+                Start
+                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>arrow_forward</span>
+              </>
+            )}
           </span>
         </div>
       </Link>
@@ -761,7 +821,11 @@ function AssessmentGroupCard({
                   }}
                 >
                   <span>{a.language || 'English'}</span>
-                  {isCached && <span className="mini-disk">💾</span>}
+                  {isCached && (
+                    <span className="material-symbols-rounded" style={{ fontSize: '14px', color: 'var(--color-success)' }}>
+                      save
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -791,8 +855,10 @@ function AssessmentGroupCard({
           <button
             className="card-action-btn"
             onClick={() => setShowLanguages(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
           >
-            Select Language →
+            Select Language
+            <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>arrow_forward</span>
           </button>
         </div>
       )}

@@ -589,7 +589,10 @@ export default function GradingPage() {
         return (
             <div className="grading-verify-container">
                 <div className="verify-card">
-                    <h2>🔐 Grading Access</h2>
+                    <h2 className="verify-title-flex">
+                        <span className="material-symbols-rounded lock-icon">lock</span>
+                        Grading Access
+                    </h2>
                     <p>Please re-enter your password to access grading</p>
                     <p className="verify-user">Logged in as: <strong>{session?.fullName}</strong></p>
                     <form onSubmit={handlePasswordVerify}>
@@ -603,7 +606,7 @@ export default function GradingPage() {
                         {passwordError && <div className="verify-error">{passwordError}</div>}
                         <div className="verify-actions">
                             <button type="button" onClick={() => router.push('/')} className="verify-back-btn">
-                                <span className="back-arrow">←</span> Back
+                                <span className="material-symbols-rounded font-icon-btn">arrow_back</span> Back
                             </button>
                             <button type="submit" disabled={verifying} className="verify-submit-btn">
                                 {verifying ? 'Verifying...' : 'Verify Access'}
@@ -618,55 +621,81 @@ export default function GradingPage() {
                         align-items: center;
                         justify-content: center;
                         padding: 20px;
-                        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                        background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-navy) 100%);
+                        font-family: var(--font-sans);
                     }
                     .verify-card {
                         background: white;
                         padding: 48px 40px;
-                        border-radius: 20px;
-                        box-shadow: 0 20px 40px -10px rgba(0,0,0,0.1);
+                        border-radius: var(--radius-lg);
+                        box-shadow: var(--shadow-lg);
                         text-align: center;
                         max-width: 420px;
                         width: 100%;
-                        border: 1px solid #f1f5f9;
+                        border: 1.5px solid var(--color-border);
                     }
-                    .verify-card h2 { margin: 0 0 12px; font-size: 24px; color: #0f172a; letter-spacing: -0.02em; }
-                    .verify-card p { color: #64748b; margin: 0 0 8px; font-size: 15px; }
-                    .verify-user { margin-bottom: 32px !important; color: #475569 !important; }
-                    .verify-user strong { color: #0f172a; font-weight: 600; }
+                    .verify-title-flex {
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 10px;
+                        margin: 0 0 12px;
+                        font-size: 26px;
+                        font-weight: 700;
+                        color: var(--color-primary);
+                        letter-spacing: -0.02em;
+                        font-family: var(--font-sans);
+                    }
+                    .lock-icon {
+                        font-size: 28px;
+                        color: var(--color-accent-peach);
+                    }
+                    .verify-card p { color: var(--color-text-secondary); margin: 0 0 8px; font-size: 15px; font-family: var(--font-sans); }
+                    .verify-user { margin-bottom: 32px !important; color: var(--color-text-secondary) !important; font-family: var(--font-sans); }
+                    .verify-user strong { color: var(--color-primary); font-weight: 600; }
                     .verify-card input {
                         width: 100%; padding: 14px 16px;
-                        border: 1px solid #cbd5e1; border-radius: 10px;
+                        border: 1.5px solid var(--color-border); border-radius: var(--radius-md);
                         font-size: 15px; margin-bottom: 20px; box-sizing: border-box;
                         transition: all 0.2s;
-                        outline: none; color: #0f172a;
+                        outline: none; color: var(--color-text);
+                        background-color: var(--color-bg);
+                        font-family: var(--font-sans);
+                        height: 52px;
                     }
                     .verify-card input:focus {
-                        border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+                        border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.25);
+                        background-color: white;
                     }
-                    .verify-card input::placeholder { color: #94a3b8; }
-                    .verify-error { color: #ef4444; margin-bottom: 16px; font-size: 14px; background: #fef2f2; padding: 10px; border-radius: 8px; border: 1px solid #fecaca; }
+                    .verify-card input::placeholder { color: var(--color-text-secondary); }
+                    .verify-error { color: var(--color-error); margin-bottom: 16px; font-size: 14px; background: #fee2e2; padding: 10px; border-radius: var(--radius-sm); border: 1.5px solid #fca5a5; font-family: var(--font-sans); }
                     
                     .verify-actions { display: flex; gap: 12px; margin-top: 12px; }
-                    
                     .verify-back-btn {
-                        flex: 1; padding: 14px; background: transparent; color: #64748b; 
-                        border: 1px solid transparent; border-radius: 10px; font-size: 15px; font-weight: 600; 
-                        text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; 
-                        transition: all 0.2s ease;
+                        border: 1.5px solid var(--color-border); border-radius: var(--radius-md); font-size: 15px; font-weight: 600; 
+                        text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; 
+                        transition: all 0.2s ease; padding: 0 18px; color: var(--color-text-secondary);
+                        font-family: var(--font-sans);
+                        height: 50px;
+                        cursor: pointer;
+                        background: white;
                     }
-                    .verify-back-btn:hover { background: #f1f5f9; color: #0f172a; border-color: transparent; }
-                    .back-arrow { font-size: 16px; transition: transform 0.2s; margin-top: -1px; }
-                    .verify-back-btn:hover .back-arrow { transform: translateX(-4px); }
+                    .verify-back-btn:hover { background: var(--color-primary-light); color: var(--color-primary); border-color: var(--color-primary); }
+                    .font-icon-btn { font-size: 20px; transition: transform 0.2s; }
+                    .verify-back-btn:hover .font-icon-btn { transform: translateX(-4px); }
                     
                     .verify-submit-btn {
-                        flex: 2; padding: 14px; background: #4f46e5; color: white; border: none;
-                        border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer;
-                        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+                        flex: 2; padding: 14px; background: var(--color-primary); color: white; border: 1.5px solid transparent;
+                        border-radius: var(--radius-md); font-size: 15px; font-weight: 600; cursor: pointer;
+                        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 12px rgba(21, 65, 89, 0.15);
                         letter-spacing: 0.01em;
+                        font-family: var(--font-sans);
+                        height: 50px;
                     }
                     .verify-submit-btn:hover:not(:disabled) {
-                        background: #4338ca;
+                        background: var(--color-accent);
+                        color: var(--color-primary);
+                        box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
                     }
                     .verify-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
                 `}</style>
@@ -683,47 +712,47 @@ export default function GradingPage() {
             <header className="grading-header">
                 <div className="header-left">
                     <button type="button" onClick={() => router.push('/')} className="back-btn" title="Back to Dashboard">
-                        <span className="back-icon">←</span> Dashboard
+                        <span className="material-symbols-rounded back-icon">arrow_back</span> Dashboard
                     </button>
                     <div>
-                        <h1>📝 Grading Dashboard</h1>
+                        <h1 className="header-title-flex">
+                            <span className="material-symbols-rounded header-icon-dashboard">assignment</span>
+                            Grading Dashboard
+                        </h1>
                         <p>Grade subjective answers and track submissions</p>
                     </div>
                 </div>
                 <div className="header-actions">
                     <span className={`status-badge ${online ? 'online' : 'offline'}`}>
-                        {online ? '● Online' : '○ Offline'}
+                        {online ? (
+                            <span className="flex-status-item">
+                                <span className="material-symbols-rounded status-symbol">wifi</span> Online
+                            </span>
+                        ) : (
+                            <span className="flex-status-item">
+                                <span className="material-symbols-rounded status-symbol">wifi_off</span> Offline
+                            </span>
+                        )}
                     </span>
                     <button 
                         onClick={() => router.push('/students')}
                         className="manage-students-btn"
-                        style={{
-                            padding: '8px 16px',
-                            background: '#f1f5f9',
-                            color: '#475569',
-                            border: '1px solid #cbd5e1',
-                            borderRadius: '8px',
-                            fontSize: '14px',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            transition: 'all 0.2s'
-                        }}
                     >
-                        👥 Manage Students
+                        <span className="material-symbols-rounded">group</span> Manage Students
                     </button>
                     {pendingGradesCount > 0 && (
-                        <span className="pending-badge">{pendingGradesCount} pending sync</span>
+                        <span className="pending-badge">
+                            <span className="material-symbols-rounded badge-icon-inline">schedule</span> {pendingGradesCount} pending sync
+                        </span>
                     )}
                     {online && (
                         <button
                             onClick={() => { loadSubmissions(); loadRecentSubmissions(); loadOfflinePendingSubs(); }}
-                            className="refresh-btn"
+                            className="refresh-btn flex-btn-icon"
                             disabled={syncing}
                         >
-                            {syncing ? '⟳' : '↻'} Refresh
+                            <span className={`material-symbols-rounded ${syncing ? 'animate-spin' : ''}`}>refresh</span>
+                            Refresh
                         </button>
                     )}
                     {/* Button 1 ─ Mark All as Graded (online + offline) */}
@@ -731,11 +760,11 @@ export default function GradingPage() {
                         <button
                             onClick={() => setShowMarkAllWarning(true)}
                             disabled={saving || syncing}
-                            className="save-btn mark-graded-btn"
-                            style={{ padding: '8px 18px', fontSize: '14px' }}
+                            className="save-btn mark-graded-btn flex-btn-icon"
                             title="Save current grades locally and mark all visible submissions as graded"
                         >
-                            {saving ? '⟳ Saving...' : '✓ Mark All as Graded'}
+                            <span className="material-symbols-rounded">{saving ? 'hourglass_empty' : 'check_circle'}</span>
+                            {saving ? 'Saving...' : 'Mark All as Graded'}
                         </button>
                     )}
                     {/* Button 2 ─ Sync Graded to Server (online) / Queued indicator (offline) */}
@@ -743,11 +772,26 @@ export default function GradingPage() {
                         <button
                             onClick={() => { if (online) setShowSyncWarning(true); }}
                             disabled={saving || syncing || !online}
-                            className="save-btn"
-                            style={{ padding: '8px 18px', fontSize: '14px', opacity: online ? 1 : 0.75 }}
+                            className="save-btn sync-server-btn flex-btn-icon"
+                            style={{ opacity: online ? 1 : 0.75 }}
                             title={online ? 'Push marked-as-graded submissions to the server' : 'Grades are saved locally — will auto-sync when internet returns'}
                         >
-                            {syncing ? '⟳ Syncing...' : online ? '↑ Sync Graded to Server' : '📶 Will sync on reconnect'}
+                            {syncing ? (
+                                <>
+                                    <span className="material-symbols-rounded animate-spin">refresh</span>
+                                    Syncing...
+                                </>
+                            ) : online ? (
+                                <>
+                                    <span className="material-symbols-rounded">cloud_upload</span>
+                                    Sync Graded to Server
+                                </>
+                            ) : (
+                                <>
+                                    <span className="material-symbols-rounded">cloud_queue</span>
+                                    Will sync on reconnect
+                                </>
+                            )}
                         </button>
                     )}
                 </div>
@@ -781,7 +825,10 @@ export default function GradingPage() {
             {needsGrading.length > 0 && (
                 <div className="grading-section">
                     <div className="section-banner info">
-                        <h3>⏳ Needs Grading ({needsGrading.length})</h3>
+                        <h3 className="section-header-flex">
+                            <span className="material-symbols-rounded banner-icon info-icon">schedule</span>
+                            Needs Grading ({needsGrading.length})
+                        </h3>
                         <p>Grade these submissions, then click <strong>"Mark All as Graded"</strong> to lock them in. They will move to the section below, ready to sync.</p>
                     </div>
                     <GradingTable
@@ -796,8 +843,11 @@ export default function GradingPage() {
             {gradedPendingSync.length > 0 && (
                 <div className="grading-section">
                     <div className="section-banner success">
-                        <h3>✅ Graded – Pending Sync ({gradedPendingSync.length})</h3>
-                        <p>Locally graded and saved. {online ? 'Click "Sync Graded to Server" to push to server.' : '📶 Offline — grades will be automatically pushed to the server as soon as internet returns.'}</p>
+                        <h3 className="section-header-flex">
+                            <span className="material-symbols-rounded banner-icon success-icon">check_circle</span>
+                            Graded – Pending Sync ({gradedPendingSync.length})
+                        </h3>
+                        <p>Locally graded and saved. {online ? 'Click "Sync Graded to Server" to push to server.' : <span className="offline-alert-flex"><span className="material-symbols-rounded font-inline-alert">wifi_off</span> Offline — grades will be automatically pushed to the server as soon as internet returns.</span>}</p>
                     </div>
                     <GradingTable
                         submissions={gradedPendingSync}
@@ -811,7 +861,10 @@ export default function GradingPage() {
             {/* No grading work */}
             {!hasGradingWork && (
                 <div className="no-submissions">
-                    <p>🎉 No pending submissions to grade.</p>
+                    <p className="no-submissions-flex">
+                        <span className="material-symbols-rounded satisfied-smiley">sentiment_satisfied</span>
+                        No pending submissions to grade.
+                    </p>
                     <p>{online ? 'All caught up!' : 'Go online to load new submissions.'}</p>
                 </div>
             )}
@@ -822,7 +875,10 @@ export default function GradingPage() {
             {offlinePendingSubs.length > 0 && (
                 <div className="grading-section offline-pending-section">
                     <div className="section-banner offline-banner">
-                        <h3>📴 Offline – Pending Server Sync ({offlinePendingSubs.length})</h3>
+                        <h3 className="section-header-flex">
+                            <span className="material-symbols-rounded banner-icon offline-icon">cloud_off</span>
+                            Offline – Pending Server Sync ({offlinePendingSubs.length})
+                        </h3>
                         <p>
                             These assessments were saved locally and have not yet been uploaded to the server.
                             {online
@@ -855,13 +911,21 @@ export default function GradingPage() {
                                         </td>
                                         <td>
                                             {!sub.hasSubjective ? (
-                                                <span className="status-pill auto-graded">⚡ Auto</span>
+                                                <span className="status-pill auto-graded flex-status-pill">
+                                                    <span className="material-symbols-rounded pill-symbol">bolt</span> Auto
+                                                </span>
                                             ) : sub.gradingStatus === 'graded' ? (
-                                                <span className="status-pill graded">✓ Graded</span>
+                                                <span className="status-pill graded flex-status-pill">
+                                                    <span className="material-symbols-rounded pill-symbol">check_circle</span> Graded
+                                                </span>
                                             ) : sub.gradingStatus === 'partial' ? (
-                                                <span className="status-pill partial">◐ Partial</span>
+                                                <span className="status-pill partial flex-status-pill">
+                                                    <span className="material-symbols-rounded pill-symbol">published_with_changes</span> Partial
+                                                </span>
                                             ) : (
-                                                <span className="status-pill pending">⏳ Ungraded</span>
+                                                <span className="status-pill pending flex-status-pill">
+                                                    <span className="material-symbols-rounded pill-symbol">schedule</span> Ungraded
+                                                </span>
                                             )}
                                         </td>
                                         <td className="time-cell">
@@ -878,7 +942,10 @@ export default function GradingPage() {
             {/* ── Section 4: Recent Submissions (Activity Feed) ─────────── */}
             <div className="grading-section recent-section">
                 <div className="section-banner neutral">
-                    <h3>📋 Recent Submissions (Last 24h)</h3>
+                    <h3 className="section-header-flex">
+                        <span className="material-symbols-rounded banner-icon neutral-icon">feed</span>
+                        Recent Submissions (Last 24h)
+                    </h3>
                     <p>{online ? 'Live from server.' : 'Showing cached data from last sync.'}</p>
                 </div>
                 {recentSubmissions.length === 0 ? (
@@ -911,9 +978,15 @@ export default function GradingPage() {
                                             {sub.selected_language ? `${sub.assessment_title} (${sub.selected_language})` : sub.assessment_title}
                                         </td>
                                         <td>
-                                            <span className={`status-pill ${sub.status}`}>
-                                                {sub.status === 'graded' ? '✓ Graded' : '⏳ Pending'}
-                                            </span>
+                                            {sub.status === 'graded' ? (
+                                                <span className="status-pill graded flex-status-pill">
+                                                    <span className="material-symbols-rounded pill-symbol">check_circle</span> Graded
+                                                </span>
+                                            ) : (
+                                                <span className="status-pill pending flex-status-pill">
+                                                    <span className="material-symbols-rounded pill-symbol">schedule</span> Pending
+                                                </span>
+                                            )}
                                         </td>
                                         <td>
                                             {sub.status === 'graded' && sub.marks_obtained !== null
@@ -935,74 +1008,237 @@ export default function GradingPage() {
                 .grading-container {
                     max-width: 1400px;
                     margin: 0 auto;
-                    padding: 24px;
+                    padding: 40px 24px;
                     padding-bottom: 80px;
+                    font-family: var(--font-sans);
                 }
                 .grading-header {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    margin-bottom: 24px;
+                    margin-bottom: 32px;
                     flex-wrap: wrap;
                     gap: 16px;
+                    font-family: var(--font-sans);
                 }
                 .header-left {
                     display: flex;
                     align-items: center;
                     gap: 24px;
                 }
-                .grading-header h1 { margin: 0 0 4px; font-size: 26px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
-                .grading-header p { color: #64748b; margin: 0; font-size: 14px; font-weight: 400; }
+                .header-title-flex {
+                    margin: 0 0 4px;
+                    font-size: 28px;
+                    font-weight: 700;
+                    color: var(--color-primary);
+                    letter-spacing: -0.02em;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 10px;
+                    font-family: var(--font-sans);
+                }
+                .header-icon-dashboard {
+                    font-size: 32px;
+                    color: var(--color-primary);
+                }
+                .grading-header p { color: var(--color-text-secondary); margin: 0; font-size: 14px; font-weight: 400; font-family: var(--font-sans); }
                 .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+                
                 .status-badge {
-                    padding: 6px 14px; border-radius: 20px;
-                    font-size: 13px; font-weight: 600;
-                    border: 1px solid transparent;
+                    padding: 8px 16px;
+                    border-radius: var(--radius-md);
+                    font-size: 13px;
+                    font-weight: 600;
+                    border: 1.5px solid transparent;
+                    font-family: var(--font-sans);
+                    display: inline-flex;
+                    align-items: center;
                 }
-                .status-badge.online { background: oklch(96% 0.03 144); color: oklch(40% 0.1 144); border-color: oklch(90% 0.06 144); }
-                .status-badge.offline { background: oklch(96% 0.04 80); color: oklch(45% 0.12 80); border-color: oklch(90% 0.08 80); }
+                .flex-status-item {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+                .status-symbol {
+                    font-size: 18px;
+                }
+                .status-badge.online { background: rgba(16, 185, 129, 0.1); color: var(--color-success); border-color: rgba(16, 185, 129, 0.2); }
+                .status-badge.offline { background: rgba(245, 158, 11, 0.1); color: var(--color-warning); border-color: rgba(245, 158, 11, 0.2); }
+                
                 .pending-badge {
-                    padding: 6px 14px; background: oklch(96% 0.04 15);
-                    color: oklch(50% 0.16 15); border-radius: 20px; font-size: 13px; font-weight: 600;
-                    border: 1px solid oklch(90% 0.06 15);
+                    padding: 8px 16px;
+                    background: rgba(239, 68, 68, 0.1);
+                    color: var(--color-error);
+                    border-radius: var(--radius-md);
+                    font-size: 13px;
+                    font-weight: 600;
+                    border: 1.5px solid rgba(239, 68, 68, 0.2);
+                    font-family: var(--font-sans);
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
                 }
+                .badge-icon-inline {
+                    font-size: 16px;
+                }
+
                 .back-btn {
-                    padding: 8px 14px; background: transparent;
-                    border: 1px solid transparent;
-                    border-radius: 8px; text-decoration: none; color: #64748b;
-                    font-weight: 600; font-size: 14px;
+                    padding: 8px 16px;
+                    background: transparent;
+                    border: 1.5px solid transparent;
+                    border-radius: var(--radius-md);
+                    text-decoration: none;
+                    color: var(--color-text-secondary);
+                    font-weight: 600;
+                    font-size: 14px;
                     transition: all 0.2s ease;
-                    display: inline-flex; align-items: center; gap: 6px;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-family: var(--font-sans);
+                    cursor: pointer;
                 }
                 .back-btn:hover {
-                    background: #f1f5f9; color: #0f172a; border-color: transparent;
+                    background: var(--color-primary-light);
+                    color: var(--color-primary);
+                    border-color: var(--color-border);
                 }
-                .back-icon { transition: transform 0.2s; font-size: 16px; margin-top: -1px; }
-                .back-btn:hover .back-icon { transform: translateX(-4px); }
+                .back-icon {
+                    transition: transform 0.2s ease;
+                    font-size: 18px;
+                }
+                .back-btn:hover .back-icon {
+                    transform: translateX(-4px);
+                }
+
+                .manage-students-btn {
+                    padding: 8px 16px;
+                    background: var(--color-primary-light);
+                    color: var(--color-primary);
+                    border: 1.5px solid var(--color-border);
+                    border-radius: var(--radius-md);
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    transition: all 0.2s ease;
+                    font-family: var(--font-sans);
+                }
+                .manage-students-btn:hover {
+                    background: var(--color-primary);
+                    color: white;
+                    border-color: var(--color-primary);
+                }
+
                 .refresh-btn {
-                    padding: 10px 18px; background: #f1f5f9; color: #475569;
-                    border: 1px solid transparent; border-radius: 10px; cursor: pointer; font-size: 14px;
-                    font-weight: 600; transition: all 0.2s;
+                    padding: 8px 16px;
+                    background: white;
+                    color: var(--color-primary);
+                    border: 1.5px solid var(--color-border);
+                    border-radius: var(--radius-md);
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: 600;
+                    transition: all 0.2s ease;
+                    font-family: var(--font-sans);
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
                 }
-                .refresh-btn:hover:not(:disabled) { background: #e2e8f0; color: #0f172a; }
-                .refresh-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+                .refresh-btn:hover:not(:disabled) {
+                    background: var(--color-primary-light);
+                    border-color: var(--color-primary);
+                }
+                .refresh-btn:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                }
+
+                .flex-btn-icon {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 6px;
+                }
+
+                .save-btn {
+                    padding: 8px 18px;
+                    background: var(--color-primary);
+                    color: white;
+                    border: 1.5px solid transparent;
+                    border-radius: var(--radius-md);
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    box-shadow: var(--shadow);
+                    font-family: var(--font-sans);
+                }
+                .save-btn:hover:not(:disabled) {
+                    background: var(--color-accent);
+                    color: var(--color-primary);
+                    box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
+                }
+                .save-btn:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                }
+                .mark-graded-btn {
+                    background: var(--color-success) !important;
+                    color: white !important;
+                }
+                .mark-graded-btn:hover:not(:disabled) {
+                    background: #059669 !important;
+                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
+                }
+                
                 .grading-filters {
-                    display: flex; align-items: center; gap: 12px;
-                    margin-bottom: 24px; flex-wrap: wrap;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 32px;
+                    flex-wrap: wrap;
+                    font-family: var(--font-sans);
                 }
-                .grading-filters label { font-size: 14px; font-weight: 500; color: #555; }
+                .grading-filters label {
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: var(--color-text-secondary);
+                }
                 .grading-filters select {
-                    padding: 8px 12px; border: 1px solid #ddd;
-                    border-radius: 8px; font-size: 14px;
+                    padding: 10px 14px;
+                    border: 1.5px solid var(--color-border);
+                    border-radius: var(--radius-md);
+                    font-size: 14px;
+                    font-family: var(--font-sans);
+                    color: var(--color-text);
+                    background-color: white;
+                    outline: none;
+                    transition: all 0.2s ease;
                 }
+                .grading-filters select:focus {
+                    border-color: var(--color-accent);
+                    box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.25);
+                }
+
                 .grading-loading {
-                    min-height: 100vh; display: flex;
-                    align-items: center; justify-content: center;
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
                 }
-                .loading-dots { display: flex; gap: 8px; }
+                .loading-dots {
+                    display: flex;
+                    gap: 8px;
+                }
                 .loading-dots span {
-                    width: 10px; height: 10px; background: #667eea;
-                    border-radius: 50%; animation: bounce 1.4s infinite ease-in-out both;
+                    width: 12px;
+                    height: 12px;
+                    background: var(--color-accent);
+                    border-radius: 50%;
+                    animation: bounce 1.4s infinite ease-in-out both;
                 }
                 .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
                 .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
@@ -1010,109 +1246,148 @@ export default function GradingPage() {
                     0%, 80%, 100% { transform: scale(0); }
                     40% { transform: scale(1); }
                 }
-                .grading-section { margin-bottom: 48px; }
-                .recent-section { margin-top: 48px; }
-                .section-banner {
-                    padding: 16px 24px; border-radius: 12px;
-                    margin-bottom: 20px; border: 1px solid transparent;
-                    display: flex; flex-direction: column; gap: 4px;
+
+                .grading-section {
+                    margin-bottom: 48px;
                 }
-                .section-banner h3 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+                .recent-section {
+                    margin-top: 48px;
+                }
+                .section-banner {
+                    padding: 20px 24px;
+                    border-radius: var(--radius-md);
+                    margin-bottom: 24px;
+                    border: 1.5px solid transparent;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    font-family: var(--font-sans);
+                }
+                .section-header-flex {
+                    margin: 0;
+                    font-size: 18px;
+                    font-weight: 700;
+                    letter-spacing: -0.01em;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .banner-icon {
+                    font-size: 22px;
+                }
                 .section-banner p { margin: 0; font-size: 14px; opacity: 0.9; }
-                .section-banner.info { background: oklch(96% 0.02 240); border-color: oklch(90% 0.04 240); color: oklch(35% 0.08 240); }
-                .section-banner.success { background: oklch(96% 0.03 144); border-color: oklch(90% 0.06 144); color: oklch(35% 0.08 144); }
-                .section-banner.neutral { background: oklch(98% 0 0); border-color: oklch(90% 0 0); color: oklch(40% 0 0); }
-                .offline-banner { background: oklch(96% 0.04 80); border-color: oklch(90% 0.08 80); color: oklch(40% 0.1 80); }
+                .section-banner.info { background: var(--color-primary-light); border-color: rgba(21, 65, 89, 0.15); color: var(--color-primary); }
+                .section-banner.success { background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.2); color: var(--color-success); }
+                .section-banner.neutral { background: var(--color-bg); border-color: var(--color-border); color: var(--color-text-secondary); }
+                .offline-banner { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.2); color: #b45309; }
+                
+                .offline-alert-flex {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+                .font-inline-alert {
+                    font-size: 16px;
+                }
+
                 .no-submissions {
-                    text-align: center; padding: 64px 20px; color: oklch(50% 0 0);
-                    background: white; border-radius: 16px; border: 1px dashed oklch(85% 0 0);
+                    text-align: center;
+                    padding: 64px 24px;
+                    color: var(--color-text-secondary);
+                    background: white;
+                    border-radius: var(--radius-md);
+                    border: 1.5px dashed var(--color-border);
                     font-size: 15px;
+                    font-family: var(--font-sans);
+                }
+                .no-submissions-flex {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                    font-size: 18px;
+                    font-weight: 700;
+                    color: var(--color-primary);
+                    margin: 0 0 8px;
+                }
+                .satisfied-smiley {
+                    font-size: 24px;
+                    color: var(--color-accent-peach);
                 }
                 .no-submissions.small { padding: 32px 20px; }
-                .save-btn {
-                    padding: 12px 24px; background: #0f172a;
-                    color: white; border: none; border-radius: 10px;
-                    font-size: 14px; font-weight: 600; cursor: pointer;
-                    transition: background-color 0.2s ease;
-                }
-                .save-btn:hover:not(:disabled) {
-                    background: #1e293b;
-                }
-                .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-                .mark-graded-btn {
-                    background: oklch(50% 0.12 144) !important;
-                }
-                .mark-graded-btn:hover:not(:disabled) {
-                    background: oklch(45% 0.12 144) !important;
-                }
+
                 /* Recent table container */
                 .recent-table-wrapper {
-                    overflow-x: auto; border: 1px solid #e2e8f0;
-                    border-radius: 12px; background: white;
-                    box-shadow: 0 2px 4px -2px rgba(0,0,0,0.02);
+                    overflow-x: auto;
+                    border: 1.5px solid var(--color-border);
+                    border-radius: var(--radius-md);
+                    background: white;
+                    box-shadow: var(--shadow);
                 }
-                .recent-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+                .recent-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; font-family: var(--font-sans); }
                 .recent-table th {
-                    padding: 14px 16px; background: #f8fafc;
-                    font-weight: 600; text-align: left; color: #475569;
-                    border-bottom: 1px solid #e2e8f0; white-space: nowrap;
+                    padding: 14px 16px;
+                    background: var(--color-primary-light);
+                    font-weight: 600;
+                    text-align: left;
+                    color: var(--color-primary);
+                    border-bottom: 1.5px solid var(--color-border);
+                    white-space: nowrap;
                     font-size: 13px;
+                    font-family: var(--font-sans);
                 }
                 .recent-table td {
-                    padding: 14px 16px; border-bottom: 1px solid #f1f5f9;
-                    color: #334155; vertical-align: middle;
+                    color: var(--color-text); vertical-align: middle; font-family: var(--font-sans);
                 }
                 .recent-table tr:last-child td { border-bottom: none; }
-                .recent-table tr:hover td { background: #f8fafc; }
-                .student-name { font-weight: 600; color: #0f172a; white-space: nowrap; }
-                .school-name { color: #64748b; font-size: 13px; max-width: 160px; }
-                .assessment-name { max-width: 200px; color: #334155; font-weight: 500; }
-                .time-cell { color: #64748b; font-size: 13px; white-space: nowrap; }
+                .recent-table tr:hover td { background: var(--color-primary-light); }
+                .student-name { font-weight: 600; color: var(--color-primary); white-space: nowrap; font-family: var(--font-sans); }
+                .school-name { color: var(--color-text-secondary); font-size: 13px; max-width: 160px; font-family: var(--font-sans); }
+                .assessment-name { max-width: 200px; color: var(--color-text); font-weight: 500; font-family: var(--font-sans); }
+                .time-cell { color: var(--color-text-secondary); font-size: 13px; white-space: nowrap; font-family: var(--font-sans); }
                 
                 .status-pill {
                     display: inline-flex; align-items: center; justify-content: center;
                     padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
-                    white-space: nowrap; letter-spacing: 0.01em; height: 24px;
+                    white-space: nowrap; letter-spacing: 0.01em; height: 24px; font-family: var(--font-sans);
                 }
-                .status-pill.graded { background: oklch(96% 0.03 144); color: oklch(40% 0.1 144); }
-                .status-pill.pending { background: oklch(96% 0.04 80); color: oklch(45% 0.12 80); }
-                .status-pill.auto-graded { background: oklch(96% 0.03 240); color: oklch(45% 0.1 240); }
-                .status-pill.partial { background: oklch(96% 0.04 45); color: oklch(50% 0.14 45); }
+                .status-pill.graded { background: rgba(16, 185, 129, 0.1); color: var(--color-success); }
+                .status-pill.pending { background: rgba(245, 158, 11, 0.1); color: var(--color-warning); }
+                .status-pill.auto-graded { background: var(--color-primary-light); color: var(--color-primary); }
+                .status-pill.partial { background: rgba(245, 181, 151, 0.15); color: #c2410c; }
             `}</style>
 
             {/* Save message toast */}
             {saveMessage && (
-                <div style={{ position: 'fixed', bottom: '24px', right: '24px', background: '#155724', color: 'white', padding: '12px 20px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 999 }}>
-                    {saveMessage}
+                <div className="toast-notification">
+                    <span className="material-symbols-rounded">check_circle</span>
+                    <span>{saveMessage}</span>
                 </div>
             )}
 
             {/* Sync Warning Modal */}
             {showSyncWarning && (
-                <div
-                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
-                    onClick={() => setShowSyncWarning(false)}
-                >
-                    <div
-                        style={{ background: 'white', borderRadius: '12px', padding: '28px', maxWidth: '420px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <h3 style={{ margin: '0 0 12px', color: '#856404', fontSize: '1.1rem' }}>⚠️ Confirm Sync to Server</h3>
-                        <p style={{ margin: '0 0 24px', lineHeight: 1.6, color: '#333', fontSize: '0.95rem' }}>
+                <div className="modal-overlay" onClick={() => setShowSyncWarning(false)}>
+                    <div className="modal-wrapper" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="modal-title-flex warning-title">
+                            <span className="material-symbols-rounded modal-warn-icon">warning</span>
+                            Confirm Sync to Server
+                        </h3>
+                        <p className="modal-desc">
                             This will push <strong>{gradedPendingSync.length} graded submission{gradedPendingSync.length !== 1 ? 's' : ''}</strong> to the server.
                             Submissions still in "Needs Grading" will <em>not</em> be affected.
                             Once synced, marks cannot be changed from this dashboard.
                         </p>
-                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                        <div className="modal-actions">
                             <button
                                 onClick={() => setShowSyncWarning(false)}
-                                style={{ padding: '9px 20px', border: '1px solid #ccc', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '14px' }}
+                                className="modal-cancel-btn"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={async () => { setShowSyncWarning(false); await handleSyncGradedToServer(); }}
-                                style={{ padding: '9px 20px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
+                                className="modal-proceed-btn warning-proceed"
                             >
                                 Proceed &amp; Sync
                             </button>
@@ -1123,29 +1398,26 @@ export default function GradingPage() {
 
             {/* Mark All as Graded Warning Modal */}
             {showMarkAllWarning && (
-                <div
-                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
-                    onClick={() => setShowMarkAllWarning(false)}
-                >
-                    <div
-                        style={{ background: 'white', borderRadius: '12px', padding: '28px', maxWidth: '420px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <h3 style={{ margin: '0 0 12px', color: '#856404', fontSize: '1.1rem' }}>⚠️ Confirm Mark as Graded</h3>
-                        <p style={{ margin: '0 0 24px', lineHeight: 1.6, color: '#333', fontSize: '0.95rem' }}>
+                <div className="modal-overlay" onClick={() => setShowMarkAllWarning(false)}>
+                    <div className="modal-wrapper" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="modal-title-flex warning-title">
+                            <span className="material-symbols-rounded modal-warn-icon">warning</span>
+                            Confirm Mark as Graded
+                        </h3>
+                        <p className="modal-desc">
                             Are you sure you want to mark <strong>{needsGrading.length} submission{needsGrading.length !== 1 ? 's' : ''}</strong> as graded?
                             They will be locked from further edits in this view unless refreshed.
                         </p>
-                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                        <div className="modal-actions">
                             <button
                                 onClick={() => setShowMarkAllWarning(false)}
-                                style={{ padding: '9px 20px', border: '1px solid #ccc', borderRadius: '8px', background: 'white', cursor: 'pointer', fontSize: '14px' }}
+                                className="modal-cancel-btn"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={async () => { setShowMarkAllWarning(false); await handleMarkAllAsGraded(); }}
-                                style={{ padding: '9px 20px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
+                                className="modal-proceed-btn success-proceed"
                             >
                                 Mark as Graded
                             </button>
@@ -1340,83 +1612,90 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
             })}
 
             <style jsx>{`
-                .grading-groups { display: flex; flex-direction: column; gap: 40px; }
+                .grading-groups { display: flex; flex-direction: column; gap: 40px; font-family: var(--font-sans); }
                 .assessment-group {
-                    background: white; border-radius: 16px;
-                    border: 1px solid #e2e8f0; padding: 24px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.02);
+                    background: white; border-radius: var(--radius-md);
+                    border: 1.5px solid var(--color-border); padding: 24px;
+                    box-shadow: var(--shadow);
+                    font-family: var(--font-sans);
                 }
                 .group-title {
-                    margin: 0 0 20px; font-size: 20px; color: #0f172a;
+                    margin: 0 0 20px; font-size: 20px; color: var(--color-primary);
                     font-weight: 700; letter-spacing: -0.01em;
                     display: flex; align-items: center; gap: 8px;
+                    font-family: var(--font-sans);
                 }
                 .group-title::before {
                     content: ''; display: block; width: 6px; height: 24px;
-                    background: #4f46e5; border-radius: 4px;
+                    background: var(--color-accent); border-radius: 4px;
                 }
                 .grading-table-wrapper {
-                    overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px;
-                    box-shadow: 0 2px 4px -2px rgba(0,0,0,0.02);
+                    overflow-x: auto; border: 1.5px solid var(--color-border); border-radius: var(--radius-md);
+                    box-shadow: var(--shadow);
                 }
-                .grading-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+                .grading-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; font-family: var(--font-sans); }
                 .grading-table th, .grading-table td {
-                    padding: 14px 16px; border-bottom: 1px solid #f1f5f9; text-align: left;
-                    vertical-align: middle;
+                    padding: 14px 16px; border-bottom: 1px solid var(--color-border); text-align: left;
+                    vertical-align: middle; font-family: var(--font-sans);
                 }
                 .grading-table th { 
-                    background: #f8fafc; font-weight: 600; color: #475569; white-space: nowrap; 
-                    font-size: 13px;
+                    background: var(--color-primary-light); font-weight: 600; color: var(--color-primary); white-space: nowrap; 
+                    font-size: 13px; font-family: var(--font-sans);
                 }
                 .grading-table tr:last-child td { border-bottom: none; }
-                .grading-table tbody tr:hover td { background: #f8fafc; }
+                .grading-table tbody tr:hover td { background: var(--color-primary-light); }
                 .sticky-col {
                     position: sticky; left: 0; background: white; z-index: 1;
-                    min-width: 140px; border-right: 1px solid #e2e8f0;
+                    min-width: 140px; border-right: 1.5px solid var(--color-border);
                 }
-                .grading-table tbody tr:hover td.sticky-col { background: #f8fafc; }
-                .grading-table th.sticky-col { background: #f8fafc; }
+                .grading-table tbody tr:hover td.sticky-col { background: var(--color-primary-light); }
+                .grading-table th.sticky-col { background: var(--color-primary-light); }
                 .student-cell { max-width: 250px; }
-                .student-name { font-weight: 600; color: #0f172a; }
-                .student-meta { font-size: 13px; color: #64748b; margin-top: 4px; }
+                .student-name { font-weight: 600; color: var(--color-primary); font-family: var(--font-sans); }
+                .student-meta { font-size: 13px; color: var(--color-text-secondary); margin-top: 4px; font-family: var(--font-sans); }
                 .grade-cell { min-width: 200px; }
                 .grade-input {
                     width: 72px; padding: 8px 10px;
-                    border: 1px solid #cbd5e1; border-radius: 8px;
+                    border: 1.5px solid var(--color-border); border-radius: var(--radius-sm);
                     text-align: center; font-size: 14px; font-weight: 500;
-                    color: #0f172a; transition: all 0.2s;
+                    color: var(--color-text); transition: all 0.2s;
+                    font-family: var(--font-sans);
+                    background-color: white;
+                    outline: none;
                 }
-                .grade-input:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+                .grade-input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.25); }
                 .grade-badge {
                     display: inline-flex; align-items: center; justify-content: center;
                     padding: 4px 12px; height: 28px;
-                    background: oklch(96% 0.03 144); color: oklch(40% 0.1 144);
+                    background: rgba(16, 185, 129, 0.1); color: var(--color-success);
                     border-radius: 14px; font-size: 13px; font-weight: 600;
-                    white-space: nowrap; border: 1px solid oklch(90% 0.06 144);
+                    white-space: nowrap; border: 1.5px solid rgba(16, 185, 129, 0.2);
+                    font-family: var(--font-sans);
                 }
                 .grade-badge-zero {
-                    background: #f8fafc; color: #64748b;
-                    border-color: #e2e8f0;
+                    background: var(--color-bg); color: var(--color-text-secondary);
+                    border-color: var(--color-border);
                 }
                 .answer-preview {
                     margin-bottom: 8px; font-size: 13px;
-                    background: #f8f9fa; padding: 6px 8px; border-radius: 6px;
-                    border: 1px solid #eee; max-height: 80px;
-                    overflow-y: auto; word-wrap: break-word;
+                    background: var(--color-primary-light); padding: 6px 8px; border-radius: 6px;
+                    border: 1px solid var(--color-border); max-height: 80px;
+                    overflow-y: auto; word-wrap: break-word; font-family: var(--font-sans);
                 }
-                .ans-text { color: #333; }
+                .ans-text { color: var(--color-text); }
                 .ans-text.clickable {
                     cursor: pointer;
                 }
                 .ans-text.clickable:hover {
                     text-decoration: underline;
-                    color: #667eea;
+                    color: var(--color-accent);
                 }
                 .view-img-link {
                     display: inline-block; font-size: 12px;
-                    color: #667eea; text-decoration: underline; cursor: pointer;
+                    color: var(--color-primary); text-decoration: underline; cursor: pointer;
+                    font-weight: 600;
                 }
-                .view-img-link.disabled { color: #bbb; cursor: default; text-decoration: none; }
+                .view-img-link.disabled { color: var(--color-text-secondary); cursor: default; text-decoration: none; }
             `}</style>
 
             {popupContent && (
@@ -1451,30 +1730,34 @@ function TextPopup({ text, title, onClose }: { text: string; title?: string; onC
             <style jsx>{`
                 .text-popup-overlay {
                     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: rgba(0,0,0,0.5); display: flex;
+                    background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(4px); display: flex;
                     align-items: center; justify-content: center; z-index: 10000;
                 }
                 .text-popup-content-wrapper {
                     background: white; padding: 40px 24px 24px;
-                    border-radius: 12px; max-width: 650px; width: 90%;
+                    border-radius: var(--radius-md); max-width: 650px; width: 90%;
                     max-height: 85vh; overflow-y: auto; position: relative;
-                    box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+                    box-shadow: var(--shadow-lg); border: 1.5px solid var(--color-border);
+                    font-family: var(--font-sans);
                 }
                 .text-popup-controls {
                     position: absolute; top: 12px; right: 12px;
                 }
                 .close-btn {
                     background: none; border: none; font-size: 20px;
-                    cursor: pointer; color: #888;
+                    cursor: pointer; color: var(--color-text-secondary);
+                    font-family: var(--font-sans);
                 }
-                .close-btn:hover { color: #d93025; }
+                .close-btn:hover { color: var(--color-error); }
                 .text-popup-title {
-                    font-size: 18px; font-weight: 500; color: #222; margin-bottom: 12px;
-                    border-bottom: 1px solid #eee; padding-bottom: 8px;
+                    font-size: 18px; font-weight: 700; color: var(--color-primary); margin-bottom: 12px;
+                    border-bottom: 1.5px solid var(--color-border); padding-bottom: 8px;
+                    font-family: var(--font-sans);
                 }
                 .text-popup-text {
-                    font-size: 15px; line-height: 1.6; color: #333;
+                    font-size: 15px; line-height: 1.6; color: var(--color-text);
                     white-space: pre-wrap; word-wrap: break-word;
+                    font-family: var(--font-sans);
                 }
             `}</style>
         </div>
@@ -1534,13 +1817,19 @@ function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
     }, [url, blob]);
 
     if (loading) {
-        return <span className="view-img-link loading">⌛ Loading...</span>;
+        return (
+            <span className="view-img-link loading" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <span className="material-symbols-rounded" style={{ animation: 'spin 1.5s linear infinite', fontSize: '16px' }}>autorenew</span>
+                Loading...
+            </span>
+        );
     }
 
     if (!displayUrl || error) {
         return (
-            <span className="view-img-link disabled" title="Image not available offline">
-                📷 Not cached
+            <span className="view-img-link disabled" title="Image not available offline" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>no_photography</span>
+                Not cached
             </span>
         );
     }
@@ -1559,7 +1848,10 @@ function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
                     className="thumb-img"
                 />
                 <div className="thumb-overlay">
-                    <span>🔍 View</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <span className="material-symbols-rounded" style={{ fontSize: '14px', color: 'white' }}>zoom_in</span>
+                        View
+                    </span>
                 </div>
             </div>
 
@@ -1575,22 +1867,23 @@ function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
                 .thumbnail-container {
                     display: inline-block;
                     margin-top: 4px;
+                    font-family: var(--font-sans);
                 }
                 .thumbnail-preview {
                     position: relative;
                     width: 100px;
                     height: 60px;
-                    border-radius: 6px;
+                    border-radius: var(--radius-sm);
                     overflow: hidden;
-                    border: 1px solid #ddd;
+                    border: 1.5px solid var(--color-border);
                     cursor: zoom-in;
-                    background: #eee;
-                    transition: transform 0.2s, box-shadow 0.2s;
+                    background: var(--color-primary-light);
+                    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
                 }
                 .thumbnail-preview:hover {
                     transform: translateY(-2px);
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                    border-color: #667eea;
+                    box-shadow: var(--shadow-md);
+                    border-color: var(--color-accent);
                 }
                 .thumb-img {
                     width: 100%;
@@ -1600,7 +1893,7 @@ function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
                 .thumb-overlay {
                     position: absolute;
                     top: 0; left: 0; right: 0; bottom: 0;
-                    background: rgba(102, 126, 234, 0.4);
+                    background: rgba(27, 43, 78, 0.4);
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -1615,11 +1908,11 @@ function ImageLink({ url, blob }: { url: string | null; blob?: Blob }) {
                     font-size: 11px;
                     font-weight: 600;
                     text-transform: uppercase;
-                    background: rgba(0,0,0,0.4);
+                    background: var(--color-primary);
                     padding: 2px 6px;
                     border-radius: 4px;
                 }
-                .loading { color: #888; font-style: italic; }
+                .loading { color: var(--color-text-secondary); font-style: italic; }
             `}</style>
         </div>
     );

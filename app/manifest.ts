@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
     const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
 
     return {
-        name: 'PiJam Assessment',
+        name: 'PiJam Assessment Portal',
         short_name: 'PiJam',
         description: 'Submit and complete assessments offline or online',
         start_url: `${basePath}/`,
@@ -14,15 +14,21 @@ export default function manifest(): MetadataRoute.Manifest {
         orientation: 'portrait-primary',
         icons: [
             {
-                src: `${basePath}/icon-192.png`,
-                sizes: '192x192',
-                type: 'image/png',
+                src: `${basePath}/pijamLogo.svg`,
+                sizes: 'any',
+                type: 'image/svg+xml',
                 purpose: 'any'
             },
             {
-                src: `${basePath}/icon-512.png`,
+                src: `${basePath}/pijamLogo.svg`,
+                sizes: '192x192',
+                type: 'image/svg+xml',
+                purpose: 'any'
+            },
+            {
+                src: `${basePath}/pijamLogo.svg`,
                 sizes: '512x512',
-                type: 'image/png',
+                type: 'image/svg+xml',
                 purpose: 'any'
             }
         ]

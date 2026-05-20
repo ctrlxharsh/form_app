@@ -1,26 +1,18 @@
 /**
  * Health Check Endpoint
  * 
- * Minimal endpoint for verifying actual connectivity before syncing.
+ * Minimal endpoint for verifying actual network connectivity.
+ * This intentionally does NOT query the database — it only needs to prove
+ * that the client can reach the server. DB availability is a separate concern
+ * and should not affect the online/offline indicator.
  */
 
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/postgres';
 
 export async function GET() {
-    try {
-        await sql`SELECT 1`;
-        return NextResponse.json({ status: 'ok' });
-    } catch (e) {
-        return NextResponse.json({ status: 'error', message: 'Database unreachable' }, { status: 503 });
-    }
+    return NextResponse.json({ status: 'ok' });
 }
 
 export async function HEAD() {
-    try {
-        await sql`SELECT 1`;
-        return new Response(null, { status: 200 });
-    } catch (e) {
-        return new Response(null, { status: 503 });
-    }
+    return new Response(null, { status: 200 });
 }

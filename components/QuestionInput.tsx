@@ -530,12 +530,18 @@ function ImageUploadInput({
                     htmlFor="file-upload"
                     className="file-upload-label"
                 >
-                    📷 Choose Image
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <span className="material-symbols-rounded">photo_camera</span>
+                        Choose Image
+                    </span>
                 </label>
             </div>
             {value && (
                 <div className="file-preview">
-                    <span className="file-name">✓ {value.name}</span>
+                    <span className="file-name" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <span className="material-symbols-rounded" style={{ fontSize: '16px', color: 'var(--color-success)' }}>check_circle</span>
+                        {value.name}
+                    </span>
                     <span className="file-size">({(value.size / 1024).toFixed(0)} KB)</span>
                 </div>
             )}

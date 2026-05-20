@@ -100,13 +100,13 @@ export default function LoginPage() {
         <div className="login-container">
             <div className="login-card">
                 <div className="login-header">
-                    <h1>🎓 PiJam</h1>
+                    <img src="/pijamLogo.svg" alt="PiJam Logo" className="login-logo" />
                     <p>Teacher Portal Login</p>
                 </div>
 
                 {!online && (
-                    <div className="login-offline-banner">
-                        <span>📡</span>
+                    <div className="login-offline-banner flex items-center gap-2">
+                        <span className="material-symbols-rounded" style={{ fontSize: '20px', color: '#856404' }}>wifi_off</span>
                         <span>You are offline. Login requires an internet connection.</span>
                     </div>
                 )}
@@ -144,17 +144,18 @@ export default function LoginPage() {
                                 title={showPassword ? "Hide password" : "Show password"}
                             >
                                 {showPassword ? (
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
                                 ) : (
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                                 )}
                             </button>
                         </div>
                     </div>
 
                     {error && (
-                        <div className="login-error">
-                            ⚠️ {error}
+                        <div className="login-error flex items-center gap-2">
+                            <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--color-error)' }}>warning</span>
+                            <span>{error}</span>
                         </div>
                     )}
 
@@ -182,16 +183,17 @@ export default function LoginPage() {
                     align-items: center;
                     justify-content: center;
                     padding: 20px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    background: linear-gradient(135deg, var(--color-primary) 0%, #15223e 100%);
                 }
 
                 .login-card {
                     background: white;
-                    border-radius: 16px;
+                    border-radius: var(--radius-lg);
                     padding: 40px;
                     width: 100%;
                     max-width: 400px;
-                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+                    box-shadow: var(--shadow-lg);
+                    border: 1px solid var(--color-border);
                 }
 
                 .login-header {
@@ -199,15 +201,18 @@ export default function LoginPage() {
                     margin-bottom: 32px;
                 }
 
-                .login-header h1 {
-                    font-size: 2rem;
-                    margin: 0 0 8px;
-                    color: #333;
+                .login-logo {
+                    height: 56px;
+                    width: auto;
+                    margin: 0 auto 16px;
+                    display: block;
                 }
 
                 .login-header p {
-                    color: #666;
+                    color: var(--color-text-secondary);
                     margin: 0;
+                    font-size: 15px;
+                    font-weight: 500;
                 }
 
                 .login-offline-banner {
@@ -216,10 +221,11 @@ export default function LoginPage() {
                     gap: 8px;
                     padding: 12px;
                     background: #fff3cd;
-                    border-radius: 8px;
+                    border-radius: var(--radius-sm);
                     margin-bottom: 20px;
                     font-size: 14px;
                     color: #856404;
+                    border: 1px solid #ffeeba;
                 }
 
                 .login-form {
@@ -235,27 +241,33 @@ export default function LoginPage() {
                 }
 
                 .form-group label {
-                    font-weight: 500;
-                    color: #333;
+                    font-weight: 600;
+                    color: var(--color-primary);
+                    font-size: 14px;
                 }
 
                 .form-group input {
                     padding: 12px 16px;
-                    border: 1px solid #ddd;
-                    border-radius: 8px;
+                    border: 1.5px solid var(--color-border);
+                    border-radius: var(--radius-md);
                     font-size: 16px;
+                    font-family: var(--font-sans);
                     transition: border-color 0.2s, box-shadow 0.2s;
+                    color: var(--color-text);
+                    background-color: var(--color-bg);
                 }
 
                 .form-group input:focus {
                     outline: none;
-                    border-color: #667eea;
-                    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+                    border-color: var(--color-accent);
+                    box-shadow: 0 0 0 3px rgba(78, 205, 196, 0.25);
+                    background-color: white;
                 }
 
                 .form-group input:disabled {
-                    background: #f5f5f5;
+                    background: #e2e8f0;
                     cursor: not-allowed;
+                    opacity: 0.7;
                 }
 
                 .password-input-wrapper {
@@ -266,7 +278,7 @@ export default function LoginPage() {
 
                 .password-input-wrapper input {
                     width: 100%;
-                    padding-right: 40px;
+                    padding-right: 44px;
                 }
 
                 .password-toggle {
@@ -278,7 +290,7 @@ export default function LoginPage() {
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    padding: 4px;
+                    padding: 6px;
                     transition: opacity 0.2s;
                 }
 
@@ -292,51 +304,40 @@ export default function LoginPage() {
 
                 .login-error {
                     padding: 12px;
-                    background: #fee;
-                    border: 1px solid #fcc;
-                    border-radius: 8px;
-                    color: #c00;
+                    background: #fee2e2;
+                    border: 1.5px solid #fca5a5;
+                    border-radius: var(--radius-sm);
+                    color: var(--color-error);
                     font-size: 14px;
+                    font-weight: 500;
                 }
 
                 .login-button {
                     padding: 14px 24px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    background: linear-gradient(135deg, var(--color-primary) 0%, #1c2e54 100%);
                     color: white;
                     border: none;
-                    border-radius: 8px;
+                    border-radius: var(--radius-md);
                     font-size: 16px;
                     font-weight: 600;
+                    font-family: var(--font-sans);
                     cursor: pointer;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     gap: 8px;
-                    transition: transform 0.2s, box-shadow 0.2s;
+                    transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
                 }
 
                 .login-button:hover:not(:disabled) {
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+                    transform: translateY(-1.5px);
+                    box-shadow: 0 6px 20px rgba(27, 43, 78, 0.35);
+                    background: linear-gradient(135deg, #223762 0%, #172647 100%);
                 }
 
                 .login-button:disabled {
                     opacity: 0.6;
                     cursor: not-allowed;
-                }
-
-                .login-footer {
-                    margin-top: 24px;
-                    text-align: center;
-                }
-
-                .login-footer a {
-                    color: #667eea;
-                    text-decoration: none;
-                }
-
-                .login-footer a:hover {
-                    text-decoration: underline;
                 }
 
                 .mini-spinner {
@@ -361,7 +362,7 @@ export default function LoginPage() {
                 .loading-dots span {
                     width: 8px;
                     height: 8px;
-                    background: #667eea;
+                    background: var(--color-accent);
                     border-radius: 50%;
                     animation: bounce 1.4s infinite ease-in-out both;
                 }
