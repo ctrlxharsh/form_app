@@ -4,8 +4,8 @@ export default function manifest(): MetadataRoute.Manifest {
     const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
 
     return {
-        name: 'PiJam Assessment Portal',
-        short_name: 'PiJam',
+        name: 'PiPulse Assessment Portal',
+        short_name: 'PiPulse',
         description: 'Submit and complete assessments offline or online',
         start_url: `${basePath}/`,
         display: 'standalone',

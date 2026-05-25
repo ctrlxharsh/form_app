@@ -12,7 +12,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "PiJam Assessment Portal",
+  title: "PiPulse Assessment Portal",
   description: "Submit and complete assessments offline or online",
   icons: {
     icon: "/pijamLogo.svg",
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "PiJam Assessment Portal",
+    title: "PiPulse Assessment Portal",
   },
 };
 

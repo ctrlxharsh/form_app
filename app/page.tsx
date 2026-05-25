@@ -513,7 +513,7 @@ export default function HomePage() {
             color: 'var(--color-text)',
             fontFamily: 'var(--font-sans)'
           }}>
-            PiJam Assessment Portal
+            PiPulse Assessment Portal
           </h1>
         </header>
 
