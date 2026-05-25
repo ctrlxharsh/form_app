@@ -218,7 +218,7 @@ export default function StudentsPage() {
                             <tbody>
                                 {paginatedStudents.map(s => (
                                     <tr key={s.student_id}>
-                                        <td><span className="font-mono text-xs block">{s.unique_id}</span><span className="text-[10px] text-gray-400">PW: {s.password || '01012001'}</span></td>
+                                        <td><span className="font-mono text-xs block">{s.unique_id}</span></td>
                                         <td><div className="font-semibold">{s.first_name} {s.last_name}</div><div className="text-[10px] text-gray-400">DOB: {s.date_of_birth || 'N/A'}</div></td>
                                         <td className="text-sm">{s.school_name}</td>
                                         <td>Class {s.class_grade} ({s.section})</td>
