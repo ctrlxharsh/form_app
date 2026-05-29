@@ -10,7 +10,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { QuestionInput, type AnswerValue } from './QuestionInput';
-import { StudentDetailsForm, type StudentDetails } from './StudentDetailsForm';
+import { StudentDetailsForm, type StudentDetails, isDropoutOrAlumni } from './StudentDetailsForm';
 import { deviceType, osName, osVersion, browserName, browserVersion, mobileVendor, mobileModel, engineName, getUA } from "react-device-detect";
 import {
     type FormData,
@@ -421,7 +421,7 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     onSaveForOffline={handleSaveForOffline}
                 />
                 <StudentDetailsForm
-                    initialClassGrade={formData.class_grade}
+                    assessmentGrade={formData.class_grade}
                     onSubmit={handleStudentDetailsSubmit}
                 />
             </div>
@@ -520,13 +520,37 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
         const totalQuestions = formData.sections.reduce((sum, s) => sum + s.questions.length, 0);
         const totalAnswered = formData.sections.reduce((sum, s) => sum + getProgressForSection(s).answered, 0);
 
+        const isDropout = String(studentDetails.classGrade).toLowerCase().trim() === 'dropout' || String(studentDetails.classGrade).toLowerCase().trim() === 'd';
+        const isAlumni = String(studentDetails.classGrade).toLowerCase().trim() === 'alumni' || String(studentDetails.classGrade).toLowerCase().trim() === 'a';
+        const isBlocked = isDropout || isAlumni;
+        const isMismatch = formData.class_grade !== undefined && !isBlocked && String(studentDetails.classGrade).trim() !== String(formData.class_grade).trim();
+        let studentGradeText = `Class ${studentDetails.classGrade}`;
+        if (isDropout) studentGradeText = "Dropout";
+        if (isAlumni) studentGradeText = "Alumni";
+
         return (
             <div className="form-wrapper">
                 <div className="confirm-container">
                     <div className="confirm-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span className="material-symbols-rounded" style={{ fontSize: '48px', color: 'var(--color-primary)' }}>assignment</span>
+                        <span className="material-symbols-rounded" style={{ fontSize: '48px', color: isBlocked ? 'var(--color-error)' : 'var(--color-primary)' }}>
+                            {isBlocked ? 'block' : 'assignment'}
+                        </span>
                     </div>
-                    <h2 className="confirm-title">Ready to Submit?</h2>
+                    <h2 className="confirm-title">{isBlocked ? 'Submission Blocked' : 'Ready to Submit?'}</h2>
+
+                    {isBlocked && (
+                        <div className="error-message" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', borderRadius: 'var(--radius-md)', fontSize: '14px', background: '#fee2e2', border: '1.5px solid #fca5a5', color: 'var(--color-error)', margin: '16px 0', textAlign: 'left' }}>
+                            <span className="material-symbols-rounded" style={{ color: 'var(--color-error)' }}>block</span>
+                            <span><strong>Submission Blocked:</strong> Students marked as Dropout or Alumni are not allowed to submit assessments.</span>
+                        </div>
+                    )}
+
+                    {isMismatch && (
+                        <div className="warning-message" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', borderRadius: 'var(--radius-md)', fontSize: '14px', background: '#fef3c7', border: '1.5px solid #fcd34d', color: '#92400e', margin: '16px 0', textAlign: 'left' }}>
+                            <span className="material-symbols-rounded" style={{ color: '#d97706' }}>warning</span>
+                            <span><strong>Grade Mismatch:</strong> Your grade ({studentGradeText}) is different from this assessment's grade (Class {formData.class_grade}).</span>
+                        </div>
+                    )}
 
                     <div className="confirm-summary">
                         <div className="summary-row">
@@ -543,7 +567,7 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                         </div>
                         <div className="summary-row">
                             <span>Class:</span>
-                            <strong>{studentDetails.classGrade}{studentDetails.section}</strong>
+                            <strong>{studentGradeText} ({studentDetails.section})</strong>
                         </div>
                         <div className="summary-row">
                             <span>Questions Answered:</span>
@@ -556,7 +580,10 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     )}
 
                     <p className="confirm-warning">
-                        Are you sure you want to submit? You cannot change your answers after submission.
+                        {isBlocked 
+                            ? "You are not permitted to submit this assessment."
+                            : "Are you sure you want to submit? You cannot change your answers after submission."
+                        }
                     </p>
 
                     <div className="confirm-actions">
@@ -572,8 +599,18 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                         <button
                             onClick={handleSubmit}
                             className="nav-button primary submit-final"
-                            disabled={isSubmitting}
-                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', minHeight: '48px' }}
+                            disabled={isSubmitting || isBlocked}
+                            style={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center', 
+                                gap: '8px', 
+                                minHeight: '48px',
+                                opacity: isBlocked ? 0.5 : 1,
+                                cursor: isBlocked ? 'not-allowed' : 'pointer',
+                                background: isBlocked ? 'var(--color-border)' : 'var(--color-primary)',
+                                color: isBlocked ? 'var(--color-text-secondary)' : 'white'
+                            }}
                         >
                             {isSubmitting ? (
                                 <>
@@ -582,8 +619,17 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                                 </>
                             ) : (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                                    <span className="material-symbols-rounded">check_circle</span>
-                                    Yes, Submit
+                                    {isBlocked ? (
+                                        <>
+                                            <span className="material-symbols-rounded">block</span>
+                                            Blocked
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="material-symbols-rounded">check_circle</span>
+                                            Yes, Submit
+                                        </>
+                                    )}
                                 </span>
                             )}
                         </button>

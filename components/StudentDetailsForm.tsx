@@ -27,12 +27,18 @@ export interface StudentDetails {
     geolocation?: string | null;
 }
 
+export const isDropoutOrAlumni = (grade: any): boolean => {
+    if (!grade) return false;
+    const gStr = String(grade).toLowerCase().trim();
+    return gStr === 'dropout' || gStr === 'alumni' || gStr === 'd' || gStr === 'a';
+};
+
 interface StudentDetailsFormProps {
-    initialClassGrade?: number;
+    assessmentGrade?: number;
     onSubmit: (details: StudentDetails) => void;
 }
 
-export function StudentDetailsForm({ onSubmit }: StudentDetailsFormProps) {
+export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetailsFormProps) {
     const [studentId, setStudentId] = useState('');
     const [password, setPassword] = useState('');
     const [lookupResult, setLookupResult] = useState<StudentDetails | null>(null);
@@ -179,43 +185,86 @@ export function StudentDetailsForm({ onSubmit }: StudentDetailsFormProps) {
                     </div>
                 </form>
             ) : (
-                <div className="confirmation-card">
-                    <div className="confirm-header">
-                        <div className="confirm-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <span className="material-symbols-rounded" style={{ fontSize: '32px', color: 'var(--color-primary)' }}>account_circle</span>
-                        </div>
-                        <h3>Confirm Your Identity</h3>
-                    </div>
-                    
-                    <div className="details-grid">
-                        <div className="detail-item">
-                            <label>Name</label>
-                            <div className="detail-value">{lookupResult.studentName}</div>
-                        </div>
-                        <div className="detail-item">
-                            <label>Class & Section</label>
-                            <div className="detail-value">Class {lookupResult.classGrade} ({lookupResult.section})</div>
-                        </div>
-                        <div className="detail-item">
-                            <label>School</label>
-                            <div className="detail-value">{lookupResult.schoolName}</div>
-                        </div>
-                    </div>
+                (() => {
+                    const isDropout = String(lookupResult.classGrade).toLowerCase().trim() === 'dropout' || String(lookupResult.classGrade).toLowerCase().trim() === 'd';
+                    const isAlumni = String(lookupResult.classGrade).toLowerCase().trim() === 'alumni' || String(lookupResult.classGrade).toLowerCase().trim() === 'a';
+                    const isBlocked = isDropout || isAlumni;
+                    const isMismatch = assessmentGrade !== undefined && !isBlocked && String(lookupResult.classGrade).trim() !== String(assessmentGrade).trim();
+                    let gradeText = `Class ${lookupResult.classGrade}`;
+                    if (isDropout) gradeText = "Dropout";
+                    if (isAlumni) gradeText = "Alumni";
 
-                    <p className="confirm-text">Is this you? If yes, click below to start.</p>
+                    return (
+                        <div className="confirmation-card">
+                            <div className="confirm-header">
+                                <div className="confirm-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <span className="material-symbols-rounded" style={{ fontSize: '32px', color: isBlocked ? 'var(--color-error)' : 'var(--color-primary)' }}>
+                                        {isBlocked ? 'block' : 'account_circle'}
+                                    </span>
+                                </div>
+                                <h3>Confirm Your Identity</h3>
+                            </div>
 
-                    <div className="confirm-actions">
-                        <button onClick={() => setLookupResult(null)} className="nav-button secondary">
-                            Not Me (Back)
-                        </button>
-                        <button onClick={handleConfirm} className="submit-button primary">
-                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%' }}>
-                                Yes, Start Assessment
-                                <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>arrow_forward</span>
-                            </span>
-                        </button>
-                    </div>
-                </div>
+                            {isBlocked && (
+                                <div className="error-message" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', background: '#fee2e2', border: '1.5px solid #fca5a5' }}>
+                                    <span className="material-symbols-rounded" style={{ color: 'var(--color-error)' }}>block</span>
+                                    <span><strong>Submission Blocked:</strong> Students marked as Dropout or Alumni are not allowed to submit assessments.</span>
+                                </div>
+                            )}
+
+                            {isMismatch && (
+                                <div className="warning-message" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', padding: '12px', borderRadius: 'var(--radius-md)', fontSize: '14px', background: '#fef3c7', border: '1.5px solid #fcd34d', color: '#92400e', fontFamily: 'var(--font-sans)', textAlign: 'left' }}>
+                                    <span className="material-symbols-rounded" style={{ color: '#d97706' }}>warning</span>
+                                    <span><strong>Grade Mismatch:</strong> Your grade ({gradeText}) is different from this assessment's grade (Class {assessmentGrade}).</span>
+                                </div>
+                            )}
+                            
+                            <div className="details-grid">
+                                <div className="detail-item">
+                                    <label>Name</label>
+                                    <div className="detail-value">{lookupResult.studentName}</div>
+                                </div>
+                                <div className="detail-item">
+                                    <label>Class & Section</label>
+                                    <div className="detail-value">{gradeText} ({lookupResult.section})</div>
+                                </div>
+                                <div className="detail-item">
+                                    <label>School</label>
+                                    <div className="detail-value">{lookupResult.schoolName}</div>
+                                </div>
+                            </div>
+
+                            <p className="confirm-text" style={{ color: isBlocked ? 'var(--color-error)' : 'var(--color-text-secondary)' }}>
+                                {isBlocked 
+                                    ? "You are not permitted to submit this assessment." 
+                                    : "Is this you? If yes, click below to start."
+                                }
+                            </p>
+
+                            <div className="confirm-actions">
+                                <button onClick={() => setLookupResult(null)} className="nav-button secondary">
+                                    Not Me (Back)
+                                </button>
+                                <button 
+                                    onClick={handleConfirm} 
+                                    disabled={isBlocked} 
+                                    className="submit-button primary"
+                                    style={{ 
+                                        opacity: isBlocked ? 0.5 : 1, 
+                                        cursor: isBlocked ? 'not-allowed' : 'pointer',
+                                        background: isBlocked ? 'var(--color-border)' : 'var(--color-primary)',
+                                        color: isBlocked ? 'var(--color-text-secondary)' : 'white'
+                                    }}
+                                >
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%' }}>
+                                        {isBlocked ? 'Blocked' : 'Yes, Start Assessment'}
+                                        <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>arrow_forward</span>
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })()
             )}
 
             <style jsx>{`
