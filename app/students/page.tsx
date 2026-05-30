@@ -75,26 +75,81 @@ export default function StudentsPage() {
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [fetchingStudents, setFetchingStudents] = useState(false);
+
+    console.log('[DEBUG] StudentsPage Render: loading =', loading, 'fetchingStudents =', fetchingStudents, 'studentsCount =', students.length);
 
     useEffect(() => {
         async function init() {
+            console.log('[DEBUG] init() started on mount. Fetching session...');
             const sess = await getTeacherSession();
-            if (!sess) { router.push('/login'); return; }
+            if (!sess) {
+                console.warn('[DEBUG] No session found. Redirecting to /login.');
+                router.push('/login');
+                return;
+            }
+            console.log('[DEBUG] Session found:', sess);
             setSession(sess);
             try {
+                console.log(`[DEBUG] Fetching schools for user ${sess.userId} (${sess.role})...`);
                 const schoolRes = await fetch(`/api/schools?userId=${sess.userId}&role=${sess.role}`);
                 if (schoolRes.ok) {
                     const data = await schoolRes.json();
+                    console.log('[DEBUG] Loaded schools:', data);
                     setSchools(data);
-                    if (data.length === 1) setSelectedSchool(data[0].school_id.toString());
-                    else setSelectedSchool('');
+                    if (data.length === 1) {
+                        console.log(`[DEBUG] Single school mapped. Pre-selecting school ID: ${data[0].school_id}`);
+                        setSelectedSchool(data[0].school_id.toString());
+                    } else {
+                        setSelectedSchool('');
+                    }
+                } else {
+                    console.error('[DEBUG] Failed to load schools. Status:', schoolRes.status);
                 }
-                const studentRes = await fetch(`/api/students?teacherId=${sess.userId}&role=${sess.role}`);
-                if (studentRes.ok) setStudents(await studentRes.json());
-            } catch (err) { console.error('Init error:', err); } finally { setLoading(false); }
+            } catch (err) {
+                console.error('[DEBUG] Error during init fetch:', err);
+            } finally {
+                console.log('[DEBUG] Setting page loading state to false.');
+                setLoading(false);
+            }
         }
         init();
     }, [router]);
+
+    useEffect(() => {
+        if (!session) {
+            console.log('[DEBUG] Skipping students fetch (session is null).');
+            return;
+        }
+        const { userId, role } = session;
+        
+        async function fetchFilteredStudents() {
+            const start = Date.now();
+            console.log(`[DEBUG] fetchFilteredStudents() triggered. Filter states - School: "${selectedSchool}", Class: "${selectedClass}"`);
+            setFetchingStudents(true);
+            try {
+                let url = `/api/students?teacherId=${userId}&role=${role}`;
+                if (selectedSchool) url += `&schoolId=${selectedSchool}`;
+                if (selectedClass) url += `&classGrade=${selectedClass}`;
+                
+                console.log('[DEBUG] Fetching students from URL:', url);
+                const studentRes = await fetch(url);
+                if (studentRes.ok) {
+                    const data = await studentRes.json();
+                    console.log(`[DEBUG] Students fetch successful in ${Date.now() - start}ms. Received ${data.length} students.`);
+                    setStudents(data);
+                } else {
+                    console.error('[DEBUG] Students fetch failed. Status:', studentRes.status);
+                }
+            } catch (err) {
+                console.error('[DEBUG] Error fetching students:', err);
+            } finally {
+                setFetchingStudents(false);
+            }
+        }
+        
+        fetchFilteredStudents();
+    }, [session, selectedSchool, selectedClass]);
 
     // useEffect(() => {
     //     if (!newStudent.schoolId || !newStudent.classGrade) return;
@@ -210,7 +265,28 @@ export default function StudentsPage() {
                 </div>
             </div>
 
-            <div className="table-container">
+            <div className="table-container" style={{ position: 'relative', minHeight: '200px' }}>
+                {fetchingStudents && (
+                    <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(255, 255, 255, 0.8)',
+                        zIndex: 10,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '12px',
+                        backdropFilter: 'blur(3px)',
+                        minHeight: '200px'
+                    }}>
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[var(--color-primary)]"></div>
+                        <p style={{ color: 'var(--color-primary)', fontWeight: 600, fontSize: '14px', margin: 0 }}>Loading students...</p>
+                    </div>
+                )}
                 {filteredStudents.length > 0 ? (
                     <>
                         <table>
@@ -256,10 +332,12 @@ export default function StudentsPage() {
                         )}
                     </>
                 ) : (
-                    <div className="no-results">
-                        <p>No students found matching your criteria.</p>
-                        <div className="debug-info mt-8 pt-8 border-t border-gray-100 text-[10px] text-gray-400">User: {session?.userId} | Role: {session?.role} | Total: {students.length}</div>
-                    </div>
+                    !fetchingStudents && (
+                        <div className="no-results">
+                            <p>No students found matching your criteria.</p>
+                            <div className="debug-info mt-8 pt-8 border-t border-gray-100 text-[10px] text-gray-400">User: {session?.userId} | Role: {session?.role} | Total: {students.length}</div>
+                        </div>
+                    )
                 )}
             </div>
 

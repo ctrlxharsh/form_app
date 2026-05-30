@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
                     FROM students s
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
                     WHERE s.school_id = ${parseInt(schoolId)} 
-                    AND s.class_grade = ${parseInt(classGrade)}
+                    AND s.class_grade = ${classGrade.toString()}
                     ORDER BY s.first_name, s.last_name
                 `;
             } else if (schoolId) {
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
                     WHERE ts.teacher_id = ${parseInt(teacherId)}
                     AND s.school_id = ${parseInt(schoolId)} 
-                    AND s.class_grade = ${parseInt(classGrade)}
+                    AND s.class_grade = ${classGrade.toString()}
                     ORDER BY s.first_name, s.last_name
                 `;
             } else if (schoolId) {
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
                 date_of_birth, fathers_occupation, mothers_occupation, address, email_id
             ) VALUES (
                 ${uniqueId}, ${cohortId}, ${firstName}, ${lastName}, ${fathersName}, ${mothersName}, 
-                ${parseInt(schoolId)}, ${parseInt(classGrade)}, ${section}, ${password || '01012001'},
+                ${parseInt(schoolId)}, ${classGrade ? classGrade.toString() : null}, ${section}, ${password || '01012001'},
                 ${dateOfBirth || null}, ${fathersOccupation || ''}, ${mothersOccupation || ''}, ${address || ''}, ${emailId || ''}
             )
             RETURNING *

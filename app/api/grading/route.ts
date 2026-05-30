@@ -19,12 +19,30 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const teacherId = searchParams.get('teacherId');
         const assessmentId = searchParams.get('assessmentId');
+        const role = searchParams.get('role') || 'Teacher';
 
         if (!teacherId) {
             return NextResponse.json(
                 { error: 'teacherId is required' },
                 { status: 400 }
             );
+        }
+
+        // Define dynamic SQL conditions based on the user's role
+        let teacherCondition = sql``;
+        if (role === 'Teacher') {
+            teacherCondition = sql`AND s.submitted_by_teacher = ${parseInt(teacherId)}`;
+        } else if (role === 'Program Manager') {
+            teacherCondition = sql`AND s.submitted_by_teacher IN (
+                SELECT teacher_id FROM program_manager_teacher_mapping 
+                WHERE program_manager_id = ${parseInt(teacherId)}
+            )`;
+        } else if (['M&E', 'Lead', 'Admin', 'Program Lead'].includes(role)) {
+            // No teacher filter - sees all submissions
+            teacherCondition = sql``;
+        } else {
+            // Fallback for safety
+            teacherCondition = sql`AND s.submitted_by_teacher = ${parseInt(teacherId)}`;
         }
 
         // ?recent=true → return all submissions in last 24h for the teacher (for the activity panel)
@@ -48,8 +66,8 @@ export async function GET(request: NextRequest) {
                 FROM submissions s
                 JOIN assessments a ON s.assessment_id = a.assessment_id
                 LEFT JOIN schools sc ON s.school_id = sc.school_id
-                WHERE s.submitted_by_teacher = ${parseInt(teacherId)}
-                AND s.submitted_at >= NOW() - INTERVAL '24 hours'
+                WHERE s.submitted_at >= NOW() - INTERVAL '24 hours'
+                ${teacherCondition}
                 ORDER BY s.submitted_at DESC
             `;
             return NextResponse.json({ submissions: recentSubmissions });
@@ -58,97 +76,29 @@ export async function GET(request: NextRequest) {
         // Get status filter (default to pending only)
         const statusFilter = searchParams.get('status') || 'pending';
 
-        // Get submissions by this teacher
-        let submissions;
-        if (assessmentId) {
-            if (statusFilter === 'all') {
-                submissions = await sql`
-                    SELECT 
-                        s.submission_id,
-                        s.student_first_name,
-                        s.student_last_name,
-                        s.class_grade,
-                        s.section,
-                        s.submitted_at,
-                        s.status,
-                        s.marks_obtained,
-                        s.total_marks,
-                        s.selected_language,
-                        a.assessment_id,
-                        a.title as assessment_title
-                    FROM submissions s
-                    JOIN assessments a ON s.assessment_id = a.assessment_id
-                    WHERE s.submitted_by_teacher = ${parseInt(teacherId)}
-                    AND s.assessment_id = ${parseInt(assessmentId)}
-                    ORDER BY s.submitted_at DESC
-                `;
-            } else {
-                submissions = await sql`
-                    SELECT 
-                        s.submission_id,
-                        s.student_first_name,
-                        s.student_last_name,
-                        s.class_grade,
-                        s.section,
-                        s.submitted_at,
-                        s.status,
-                        s.marks_obtained,
-                        s.total_marks,
-                        s.selected_language,
-                        a.assessment_id,
-                        a.title as assessment_title
-                    FROM submissions s
-                    JOIN assessments a ON s.assessment_id = a.assessment_id
-                    WHERE s.submitted_by_teacher = ${parseInt(teacherId)}
-                    AND s.assessment_id = ${parseInt(assessmentId)}
-                    AND s.status = ${statusFilter}
-                    ORDER BY s.submitted_at DESC
-                `;
-            }
-        } else {
-            if (statusFilter === 'all') {
-                submissions = await sql`
-                    SELECT 
-                        s.submission_id,
-                        s.student_first_name,
-                        s.student_last_name,
-                        s.class_grade,
-                        s.section,
-                        s.submitted_at,
-                        s.status,
-                        s.marks_obtained,
-                        s.total_marks,
-                        s.selected_language,
-                        a.assessment_id,
-                        a.title as assessment_title
-                    FROM submissions s
-                    JOIN assessments a ON s.assessment_id = a.assessment_id
-                    WHERE s.submitted_by_teacher = ${parseInt(teacherId)}
-                    ORDER BY s.submitted_at DESC
-                `;
-            } else {
-                submissions = await sql`
-                    SELECT 
-                        s.submission_id,
-                        s.student_first_name,
-                        s.student_last_name,
-                        s.class_grade,
-                        s.section,
-                        s.submitted_at,
-                        s.status,
-                        s.marks_obtained,
-                        s.total_marks,
-                        s.selected_language,
-                        a.assessment_id,
-                        a.title as assessment_title
-                    FROM submissions s
-                    JOIN assessments a ON s.assessment_id = a.assessment_id
-                    WHERE s.submitted_by_teacher = ${parseInt(teacherId)}
-                    AND s.status = ${statusFilter}
-                    ORDER BY s.submitted_at DESC
-                `;
-            }
-        }
+        // Get submissions by applying dynamic filters
+        const submissions = await sql`
+            SELECT 
+                s.submission_id,
+                s.student_first_name,
+                s.student_last_name,
+                s.class_grade,
+                s.section,
+                s.submitted_at,
+                s.status,
+                s.marks_obtained,
+                s.total_marks,
+                s.selected_language,
+                a.assessment_id,
+                a.title as assessment_title
+            FROM submissions s
+            JOIN assessments a ON s.assessment_id = a.assessment_id
+            WHERE 1=1
+            ${teacherCondition}
+            ${assessmentId ? sql`AND s.assessment_id = ${parseInt(assessmentId)}` : sql``}
+            ${statusFilter !== 'all' ? sql`AND s.status = ${statusFilter}` : sql``}
+            ORDER BY s.submitted_at DESC
+        `;
 
         // For each submission, get subjective answers
         const result = [];
@@ -182,7 +132,8 @@ export async function GET(request: NextRequest) {
             SELECT DISTINCT a.assessment_id, a.title
             FROM assessments a
             JOIN submissions s ON a.assessment_id = s.assessment_id
-            WHERE s.submitted_by_teacher = ${parseInt(teacherId)}
+            WHERE 1=1
+            ${teacherCondition}
             ORDER BY a.title
         `;
 

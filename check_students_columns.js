@@ -1,4 +1,3 @@
-
 const fs = require('fs');
 const path = require('path');
 const postgres = require('postgres');
@@ -11,9 +10,13 @@ async function main() {
     const sql = postgres(dbUrl, { ssl: 'require' });
 
     try {
-        const columns = await sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'students'`;
-        console.log('--- Students Columns ---');
-        console.log(columns.map(c => c.column_name).join(', '));
+        console.log('Creating index idx_students_school_id...');
+        await sql`CREATE INDEX IF NOT EXISTS idx_students_school_id ON students(school_id)`;
+        
+        console.log('Creating index idx_students_class_grade...');
+        await sql`CREATE INDEX IF NOT EXISTS idx_students_class_grade ON students(class_grade)`;
+        
+        console.log('Indexes created successfully!');
         process.exit(0);
     } catch (err) {
         console.error(err);

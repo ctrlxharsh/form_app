@@ -132,7 +132,7 @@ export default function GradingPage() {
         let serverPending: SyncedSubmission[] = [];
         if (onlineRef.current) {
             try {
-                const response = await fetch(`/api/grading?teacherId=${session.userId}&status=pending`);
+                const response = await fetch(`/api/grading?teacherId=${session.userId}&status=pending&role=${session.role}`);
                 if (response.ok) {
                     const data = await response.json();
                     serverPending = data.submissions.map((sub: any): SyncedSubmission => ({
@@ -232,7 +232,7 @@ export default function GradingPage() {
         // 7. Initialise grades state from IndexedDB and server data
         const allSubs = [...allNeedsGrading, ...gradedPending];
         const { db } = await import('@/lib/db');
-        const pendingGrades = await db.offlineGrades.where('synced').equals(0).toArray();
+        const pendingGrades = await getPendingOfflineGrades();
         const localGradesMap: Record<number, Record<number, number>> = {};
         for (const pg of pendingGrades) {
             if (!localGradesMap[pg.submissionId]) localGradesMap[pg.submissionId] = {};
@@ -349,7 +349,7 @@ export default function GradingPage() {
 
         if (onlineRef.current) {
             try {
-                const res = await fetch(`/api/grading?teacherId=${session.userId}&recent=true`);
+                const res = await fetch(`/api/grading?teacherId=${session.userId}&recent=true&role=${session.role}`);
                 if (res.ok) {
                     const data = await res.json();
                     setRecentSubmissions(data.submissions);
@@ -407,16 +407,32 @@ export default function GradingPage() {
     // Reads every entry from the grades[submissionId] map (including synthetic
     // -questionId keys for skipped questions) and persists them to IndexedDB.
     // Must be called before any sync reads from getPendingOfflineGrades().
+    // ── Shared grade-flush helper ────────────────────────────────────────────────────────────────────
+    // Reads every entry from the grades[submissionId] map (including synthetic
+    // -questionId keys for skipped questions) and persists them to IndexedDB.
+    // Must be called before any sync reads from getPendingOfflineGrades().
     const flushSubGrades = useCallback(async (subs: SyncedSubmission[]) => {
+        console.log('[DEBUG] flushSubGrades started for submissions:', subs.map(s => s.submissionId));
         for (const sub of subs) {
             const subGrades = grades[sub.submissionId];
-            if (!subGrades) continue;
+            console.log(`[DEBUG] flushSubGrades checking sub ${sub.submissionId}. Grades in memory:`, subGrades);
+            if (!subGrades) {
+                console.warn(`[DEBUG] No grades found in React state for submission ${sub.submissionId}. Initializing with 0s.`);
+                // Fallback: If no entry exists in memory, write 0s for all subjective questions
+                for (const ans of sub.subjectiveAnswers) {
+                    console.log(`[DEBUG] Writing default 0 grade for sub ${sub.submissionId}, ans ${ans.answerId}`);
+                    await saveOfflineGrade(sub.submissionId, ans.answerId, 0);
+                }
+                continue;
+            }
             // Iterate the grades MAP directly — not subjectiveAnswers — so
             // synthetic answerId entries (for skipped questions) are included.
             for (const [answerIdStr, mark] of Object.entries(subGrades)) {
+                console.log(`[DEBUG] Saving offline grade for sub ${sub.submissionId}, answerId ${answerIdStr} = ${mark}`);
                 await saveOfflineGrade(sub.submissionId, Number(answerIdStr), mark);
             }
         }
+        console.log('[DEBUG] flushSubGrades completed.');
     }, [grades]);
 
     // handleSyncGradedToServer
@@ -425,7 +441,14 @@ export default function GradingPage() {
     // Submissions still in "Needs Grading" (not yet marked) are left alone.
     // Edge-case safe: marking → new subs arrive → Sync only touches the marked batch.
     const handleSyncGradedToServer = useCallback(async (subsToSync?: SyncedSubmission[]) => {
-        if (!session) return;
+        console.log('=== [DEBUG] handleSyncGradedToServer CALLED ===');
+        if (!session) {
+            console.error('[DEBUG] No session found during sync.');
+            return;
+        }
+        console.log('[DEBUG] Current Session UserID:', session.userId, 'Role:', session.role);
+        console.log('[DEBUG] Is online (onlineRef.current):', onlineRef.current);
+        
         if (!onlineRef.current) {
             setSaveMessage('You are offline. Grades are saved locally and will sync when you reconnect.');
             setTimeout(() => setSaveMessage(null), 4000);
@@ -433,6 +456,7 @@ export default function GradingPage() {
         }
         
         const targets = subsToSync || gradedPendingSync;
+        console.log('[DEBUG] targets to sync:', targets.map(s => s.submissionId));
         if (targets.length === 0) {
             setSaveMessage('No graded submissions to sync. Mark submissions as graded first.');
             setTimeout(() => setSaveMessage(null), 3000);
@@ -443,17 +467,15 @@ export default function GradingPage() {
         let syncError: string | null = null;
         try {
             // ── Step 0: Flush current in-memory grades to IndexedDB FIRST ───────────────
-            // This is the root-cause fix: if the teacher left inputs at their default
-            // value (e.g. 0) and never onChange'd them, saveOfflineGrade was never
-            // called, so getPendingOfflineGrades() returns empty below, and the
-            // early-return fires with "all already synced" — nothing gets sent to server.
+            console.log('[DEBUG] Step 0: Triggering flushSubGrades before sync...');
             await flushSubGrades(targets);
 
             // ── Step 1: Identify ONLY the submissions that are in targets ──
-            // This is the key guard: new ungraded submissions are NOT in this set.
             const gradedIds = new Set(targets.map(s => s.submissionId));
+            console.log('[DEBUG] Step 1: Graded submission IDs:', Array.from(gradedIds));
 
             const allPendingGrades = await getPendingOfflineGrades();
+            console.log('[DEBUG] All pending grades in IndexedDB:', allPendingGrades);
 
             // Split into offline-origin (negative submissionId) and server-origin (positive)
             const offlineGrades = allPendingGrades.filter(g =>
@@ -462,55 +484,83 @@ export default function GradingPage() {
             const syncableOnline = allPendingGrades.filter(g =>
                 g.submissionId > 0 && gradedIds.has(g.submissionId)
             );
+            console.log('[DEBUG] Offline grades to sync (negative IDs):', offlineGrades);
+            console.log('[DEBUG] Online grades to sync (positive IDs):', syncableOnline);
 
             // ── Step 2: Sync offline-origin submissions ───────────────────────────────
             const offlineLocalIds = new Set(offlineGrades.map(g => Math.abs(g.submissionId)));
+            console.log('[DEBUG] Step 2: Offline origin local IDs to sync:', Array.from(offlineLocalIds));
             for (const localId of offlineLocalIds) {
-                try { await syncSpecificSubmission(localId); }
-                catch (e) { console.error('Failed to sync offline sub', localId, e); }
+                try {
+                    console.log(`[DEBUG] Triggering syncSpecificSubmission for localId: ${localId}`);
+                    await syncSpecificSubmission(localId);
+                    console.log(`[DEBUG] Successfully synced localId: ${localId}`);
+                } catch (e) {
+                    console.error('[DEBUG] Failed to sync offline sub', localId, e);
+                }
             }
 
             // ── Step 3: Sync grades for server-origin submissions ─────────────────────
-            if (syncableOnline.length > 0) {
+            const onlineTargets = targets.filter(s => s.submissionId > 0);
+            console.log('[DEBUG] Step 3: Server-origin targets to sync:', onlineTargets.map(t => t.submissionId));
+            if (onlineTargets.length > 0) {
                 const gradesBySubmission: Record<number, Record<number, number>> = {};
-                for (const g of syncableOnline) {
-                    if (!gradesBySubmission[g.submissionId]) gradesBySubmission[g.submissionId] = {};
-                    gradesBySubmission[g.submissionId][g.answerId] = g.marks;
+                for (const sub of onlineTargets) {
+                    gradesBySubmission[sub.submissionId] = {};
                 }
+                for (const g of syncableOnline) {
+                    if (gradesBySubmission[g.submissionId]) {
+                        gradesBySubmission[g.submissionId][g.answerId] = g.marks;
+                    }
+                }
+                console.log('[DEBUG] Preparing POST payload to /api/grading:', gradesBySubmission);
 
+                console.log('[DEBUG] Sending POST /api/grading request...');
                 const response = await fetch('/api/grading', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ grades: gradesBySubmission, graderId: session.userId })
                 });
+                console.log('[DEBUG] POST /api/grading response status:', response.status);
 
                 if (response.ok) {
+                    console.log('[DEBUG] POST successful! Updating syncedSubmissions in Dexie to "graded"...');
                     const { db } = await import('@/lib/db');
                     for (const subId of Object.keys(gradesBySubmission).map(Number)) {
-                        try { await db.syncedSubmissions.update(subId, { status: 'graded' }); }
-                        catch {/* ignore */ }
+                        try {
+                            await db.syncedSubmissions.update(subId, { status: 'graded' });
+                            console.log(`[DEBUG] Updated IndexedDB syncedSubmissions status for sub ${subId} to "graded"`);
+                        } catch (e) {
+                            console.error(`[DEBUG] Failed to update IndexedDB status for sub ${subId}`, e);
+                        }
                     }
+                    console.log('[DEBUG] Marking grades as synced in IndexedDB...');
                     await markGradesAsSynced(syncableOnline.map(g => g.id!));
+                    console.log('[DEBUG] Grades marked as synced successfully.');
                 } else {
                     const errData = await response.json().catch(() => ({}));
+                    console.error('[DEBUG] POST failed with response:', errData);
                     syncError = errData.error || `Server error (${response.status})`;
                 }
             }
 
             const remaining = await getPendingOfflineGrades();
+            console.log('[DEBUG] Remaining unsynced grades in IndexedDB:', remaining);
             setPendingGradesCount(new Set(remaining.map(g => g.submissionId)).size);
             setSaveMessage(syncError ? `Sync failed: ${syncError}` : 'Grades synced to server!');
 
-            // Reload AFTER sync is complete — teacher was not mid-grading at this point
+            console.log('[DEBUG] Reloading all submissions after sync...');
             await loadSubmissions();
             await loadRecentSubmissions();
             await loadOfflinePendingSubs();
+            console.log('[DEBUG] Submissions reloaded successfully.');
         } catch (err) {
-            console.error('Sync failed:', err);
+            console.error('[DEBUG] Critical error during sync:', err);
             setSaveMessage('Failed to sync grades. Please try again.');
         } finally {
             setSyncing(false);
             setTimeout(() => setSaveMessage(null), 4000);
+            console.log('=== [DEBUG] handleSyncGradedToServer COMPLETED ===');
         }
     }, [session, gradedPendingSync, loadSubmissions, loadRecentSubmissions, loadOfflinePendingSubs, flushSubGrades]);
 
@@ -522,36 +572,51 @@ export default function GradingPage() {
     // React state.
     // In Online mode, automatically triggers a sync to immediately submit the marks.
     const handleMarkAllAsGraded = useCallback(async () => {
-        if (needsGrading.length === 0) return;
+        console.log('=== [DEBUG] handleMarkAllAsGraded CALLED ===');
+        console.log('[DEBUG] visible needsGrading count:', needsGrading.length);
+        if (needsGrading.length === 0) {
+            console.warn('[DEBUG] No visible submissions to grade.');
+            return;
+        }
         setSaving(true);
         try {
             const toMark = [...needsGrading];
+            console.log('[DEBUG] Submissions to mark as graded:', toMark.map(s => s.submissionId));
 
             // Flush ALL grade entries (including synthetic keys for skipped questions)
+            console.log('[DEBUG] Triggering flushSubGrades...');
             await flushSubGrades(toMark);
 
+            console.log('[DEBUG] Moving submissions in React state from needsGrading to gradedPendingSync...');
             setNeedsGrading([]);
             setGradedPendingSync(prev => {
                 const existingIds = new Set(prev.map(s => s.submissionId));
                 const fresh = toMark.filter(s => !existingIds.has(s.submissionId));
+                console.log('[DEBUG] Appending fresh graded items to React state:', fresh.map(f => f.submissionId));
                 return [...prev, ...fresh];
             });
 
             const pending = await getPendingOfflineGrades();
+            console.log('[DEBUG] IndexedDB pending unique graded submissions:', new Set(pending.map(g => g.submissionId)));
             // Count unique submissions, not individual grade records (1 submission can have many answers)
             setPendingGradesCount(new Set(pending.map(g => g.submissionId)).size);
             setSaveMessage('All submissions marked as graded locally.');
             setTimeout(() => setSaveMessage(null), 3000);
 
             // Auto-sync if online
+            console.log('[DEBUG] Checking if online to trigger auto-sync:', onlineRef.current);
             if (onlineRef.current) {
+                console.log('[DEBUG] Online! Triggering auto-sync to server...');
                 await handleSyncGradedToServer(toMark);
+            } else {
+                console.log('[DEBUG] Offline. Auto-sync skipped.');
             }
         } catch (err) {
-            console.error('Mark as graded error:', err);
+            console.error('[DEBUG] Critical error in handleMarkAllAsGraded:', err);
             setSaveMessage('Failed to mark as graded.');
         } finally {
             setSaving(false);
+            console.log('=== [DEBUG] handleMarkAllAsGraded COMPLETED ===');
         }
     }, [needsGrading, grades, flushSubGrades, handleSyncGradedToServer]);
 
@@ -766,7 +831,10 @@ export default function GradingPage() {
                     {/* Button 1 ─ Mark All as Graded (online + offline) */}
                     {needsGrading.length > 0 && (
                         <button
-                            onClick={() => setShowMarkAllWarning(true)}
+                            onClick={() => {
+                                console.log('[DEBUG] "Mark All as Graded" primary button clicked. needsGrading.length =', needsGrading.length);
+                                setShowMarkAllWarning(true);
+                            }}
                             disabled={saving || syncing}
                             className="save-btn mark-graded-btn flex-btn-icon"
                             title="Save current grades locally and mark all visible submissions as graded"
@@ -778,7 +846,10 @@ export default function GradingPage() {
                     {/* Button 2 ─ Sync Graded to Server (online) / Queued indicator (offline) */}
                     {gradedPendingSync.length > 0 && (
                         <button
-                            onClick={() => { if (online) setShowSyncWarning(true); }}
+                            onClick={() => {
+                                console.log('[DEBUG] "Sync Graded to Server" primary button clicked. gradedPendingSync.length =', gradedPendingSync.length);
+                                if (online) setShowSyncWarning(true);
+                            }}
                             disabled={saving || syncing || !online}
                             className="save-btn sync-server-btn flex-btn-icon"
                             style={{ opacity: online ? 1 : 0.75 }}
@@ -1363,6 +1434,123 @@ export default function GradingPage() {
                 .status-pill.pending { background: rgba(245, 158, 11, 0.1); color: var(--color-warning); }
                 .status-pill.auto-graded { background: var(--color-primary-light); color: var(--color-primary); }
                 .status-pill.partial { background: rgba(245, 181, 151, 0.15); color: #c2410c; }
+
+                /* Premium Modals Styles */
+                .modal-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(15, 23, 42, 0.6);
+                    backdrop-filter: blur(8px);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 10000;
+                    padding: 20px;
+                    animation: fadeIn 0.25s ease-out;
+                }
+                .modal-wrapper {
+                    background: white;
+                    width: 100%;
+                    max-width: 480px;
+                    border-radius: var(--radius-lg);
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                    border: 1.5px solid var(--color-border);
+                    padding: 32px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 16px;
+                    font-family: var(--font-sans);
+                    transform: scale(0.95);
+                    animation: scaleUp 0.25s ease-out forwards;
+                }
+                .modal-title-flex {
+                    margin: 0;
+                    font-size: 20px;
+                    font-weight: 700;
+                    letter-spacing: -0.02em;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 10px;
+                    font-family: var(--font-sans);
+                }
+                .warning-title {
+                    color: #9a3412;
+                }
+                .modal-warn-icon {
+                    font-size: 28px;
+                    color: var(--color-accent-peach);
+                }
+                .modal-desc {
+                    margin: 0;
+                    font-size: 15px;
+                    line-height: 1.6;
+                    color: var(--color-text-secondary);
+                    font-family: var(--font-sans);
+                }
+                .modal-desc strong {
+                    color: var(--color-primary);
+                }
+                .modal-actions {
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 12px;
+                    margin-top: 12px;
+                }
+                .modal-cancel-btn {
+                    padding: 10px 20px;
+                    background: white;
+                    border: 1.5px solid var(--color-border);
+                    border-radius: var(--radius-md);
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: var(--color-text-secondary);
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    font-family: var(--font-sans);
+                }
+                .modal-cancel-btn:hover {
+                    background: var(--color-primary-light);
+                    color: var(--color-primary);
+                    border-color: var(--color-border);
+                }
+                .modal-proceed-btn {
+                    padding: 10px 24px;
+                    border: 1.5px solid transparent;
+                    border-radius: var(--radius-md);
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: white;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    font-family: var(--font-sans);
+                    box-shadow: var(--shadow);
+                }
+                .warning-proceed {
+                    background: var(--color-accent-peach);
+                }
+                .warning-proceed:hover {
+                    background: #ea580c;
+                    box-shadow: 0 4px 12px rgba(244, 117, 96, 0.3);
+                }
+                .success-proceed {
+                    background: var(--color-success);
+                }
+                .success-proceed:hover {
+                    background: #059669;
+                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                }
+
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                @keyframes scaleUp {
+                    from { transform: scale(0.95); opacity: 0; }
+                    to { transform: scale(1); opacity: 1; }
+                }
             `}</style>
 
             {/* Save message toast */}
