@@ -45,11 +45,24 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid data or missing teacherId' }, { status: 400 });
         }
 
-        const isPrivileged = ['M&E', 'Lead', 'Admin', 'Program Lead', 'Program Manager'].includes(role || 'Teacher');
+        const isPrivileged = ['M&E', 'Lead', 'Admin', 'Program Lead'].includes(role || 'Teacher');
 
         let allSchools;
         if (isPrivileged) {
             allSchools = await sql`SELECT school_id, school_name, udise_code, state FROM schools`;
+        } else if (role === 'Program Manager') {
+            allSchools = await sql`
+                SELECT DISTINCT s.school_id, s.school_name, s.udise_code, s.state 
+                FROM schools s
+                JOIN teacher_schools ts ON s.school_id = ts.school_id
+                JOIN program_manager_teacher_mapping pmtm ON ts.teacher_id = pmtm.teacher_id
+                WHERE pmtm.program_manager_id = ${parseInt(teacherId)}
+                UNION
+                SELECT s.school_id, s.school_name, s.udise_code, s.state 
+                FROM schools s
+                JOIN teacher_schools ts ON s.school_id = ts.school_id
+                WHERE ts.teacher_id = ${parseInt(teacherId)}
+            `;
         } else {
             allSchools = await sql`
                 SELECT s.school_id, s.school_name, s.udise_code, s.state 

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
         }
 
         let students;
-        const isPrivileged = ['M&E', 'Lead', 'Admin', 'Program Lead', 'Program Manager'].includes(role);
+        const isPrivileged = ['M&E', 'Lead', 'Admin', 'Program Lead'].includes(role);
 
         if (isPrivileged) {
             if (schoolId && classGrade) {
@@ -46,6 +46,56 @@ export async function GET(request: NextRequest) {
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
                     ORDER BY s.school_id, s.class_grade, s.first_name, s.last_name
                     LIMIT 2000
+                `;
+            }
+        } else if (role === 'Program Manager') {
+            if (schoolId && classGrade) {
+                students = await sql`
+                    SELECT DISTINCT s.*, sc.school_name 
+                    FROM students s
+                    JOIN teacher_schools ts ON s.school_id = ts.school_id
+                    LEFT JOIN schools sc ON s.school_id = sc.school_id
+                    WHERE (
+                        ts.teacher_id = ${parseInt(teacherId)}
+                        OR ts.teacher_id IN (
+                            SELECT teacher_id FROM program_manager_teacher_mapping 
+                            WHERE program_manager_id = ${parseInt(teacherId)}
+                        )
+                    )
+                    AND s.school_id = ${parseInt(schoolId)} 
+                    AND s.class_grade = ${classGrade.toString()}
+                    ORDER BY s.first_name, s.last_name
+                `;
+            } else if (schoolId) {
+                 students = await sql`
+                    SELECT DISTINCT s.*, sc.school_name 
+                    FROM students s
+                    JOIN teacher_schools ts ON s.school_id = ts.school_id
+                    LEFT JOIN schools sc ON s.school_id = sc.school_id
+                    WHERE (
+                        ts.teacher_id = ${parseInt(teacherId)}
+                        OR ts.teacher_id IN (
+                            SELECT teacher_id FROM program_manager_teacher_mapping 
+                            WHERE program_manager_id = ${parseInt(teacherId)}
+                        )
+                    )
+                    AND s.school_id = ${parseInt(schoolId)} 
+                    ORDER BY s.class_grade, s.first_name, s.last_name
+                `;
+            } else {
+                students = await sql`
+                    SELECT DISTINCT s.*, sc.school_name 
+                    FROM students s
+                    JOIN teacher_schools ts ON s.school_id = ts.school_id
+                    LEFT JOIN schools sc ON s.school_id = sc.school_id
+                    WHERE (
+                        ts.teacher_id = ${parseInt(teacherId)}
+                        OR ts.teacher_id IN (
+                            SELECT teacher_id FROM program_manager_teacher_mapping 
+                            WHERE program_manager_id = ${parseInt(teacherId)}
+                        )
+                    )
+                    ORDER BY s.school_id, s.class_grade, s.first_name, s.last_name
                 `;
             }
         } else {
@@ -110,13 +160,25 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'uniqueId, firstName, schoolId, and teacherId are required' }, { status: 400 });
         }
 
-        const isPrivileged = ['M&E', 'Lead', 'Admin', 'Program Lead', 'Program Manager'].includes(role || 'Teacher');
+        const isPrivileged = ['M&E', 'Lead', 'Admin', 'Program Lead'].includes(role || 'Teacher');
 
         if (!isPrivileged) {
-            const hasAccess = await sql`
-                SELECT 1 FROM teacher_schools 
-                WHERE teacher_id = ${parseInt(teacherId)} AND school_id = ${parseInt(schoolId)}
-            `;
+            let hasAccess;
+            if (role === 'Program Manager') {
+                hasAccess = await sql`
+                    SELECT 1 FROM teacher_schools ts
+                    JOIN program_manager_teacher_mapping pmtm ON ts.teacher_id = pmtm.teacher_id
+                    WHERE pmtm.program_manager_id = ${parseInt(teacherId)} AND ts.school_id = ${parseInt(schoolId)}
+                    UNION
+                    SELECT 1 FROM teacher_schools 
+                    WHERE teacher_id = ${parseInt(teacherId)} AND school_id = ${parseInt(schoolId)}
+                `;
+            } else {
+                hasAccess = await sql`
+                    SELECT 1 FROM teacher_schools 
+                    WHERE teacher_id = ${parseInt(teacherId)} AND school_id = ${parseInt(schoolId)}
+                `;
+            }
             if (hasAccess.length === 0) {
                 return NextResponse.json({ error: 'You do not have access to this school' }, { status: 403 });
             }
