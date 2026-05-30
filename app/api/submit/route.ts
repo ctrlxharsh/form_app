@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createSubmission, saveAnswer, getFullAssessment } from '@/lib/postgres';
+import { createSubmission, saveAnswer, getFullAssessment, sql } from '@/lib/postgres';
 import { logError } from '@/lib/error-logger';
 
 interface SubmitRequest {
@@ -55,6 +55,25 @@ export async function POST(request: NextRequest) {
 
         if (classGrade < 4 || classGrade > 10) {
             return NextResponse.json({ error: 'Class grade must be between 4 and 10' }, { status: 400 });
+        }
+
+        // Check for duplicate submission
+        const existing = await sql`
+            SELECT 1 FROM submissions 
+            WHERE assessment_id = ${assessmentId}
+            AND (
+                (student_id IS NOT NULL AND student_id = ${studentId || null})
+                OR 
+                (LOWER(TRIM(student_first_name)) = LOWER(TRIM(${studentFirstName})) 
+                 AND LOWER(TRIM(student_last_name)) = LOWER(TRIM(${studentLastName})))
+            )
+            LIMIT 1
+        `;
+        if (existing.length > 0) {
+            return NextResponse.json(
+                { error: 'You have already submitted this assessment.' },
+                { status: 400 }
+            );
         }
 
         const forwardedFor = request.headers.get('x-forwarded-for');

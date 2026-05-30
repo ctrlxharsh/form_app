@@ -422,6 +422,7 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                 />
                 <StudentDetailsForm
                     assessmentGrade={formData.class_grade}
+                    assessmentId={formData.assessment_id}
                     onSubmit={handleStudentDetailsSubmit}
                 />
             </div>
@@ -522,7 +523,8 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
 
         const isDropout = String(studentDetails.classGrade).toLowerCase().trim() === 'dropout' || String(studentDetails.classGrade).toLowerCase().trim() === 'd';
         const isAlumni = String(studentDetails.classGrade).toLowerCase().trim() === 'alumni' || String(studentDetails.classGrade).toLowerCase().trim() === 'a';
-        const isBlocked = isDropout || isAlumni;
+        const isAlreadySubmitted = !!studentDetails.hasSubmitted;
+        const isBlocked = isDropout || isAlumni || isAlreadySubmitted;
         const isMismatch = formData.class_grade !== undefined && !isBlocked && String(studentDetails.classGrade).trim() !== String(formData.class_grade).trim();
         let studentGradeText = `Class ${studentDetails.classGrade}`;
         if (isDropout) studentGradeText = "Dropout";
@@ -538,7 +540,14 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     </div>
                     <h2 className="confirm-title">{isBlocked ? 'Submission Blocked' : 'Ready to Submit?'}</h2>
 
-                    {isBlocked && (
+                    {isAlreadySubmitted && (
+                        <div className="error-message" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', borderRadius: 'var(--radius-md)', fontSize: '14px', background: '#fee2e2', border: '1.5px solid #fca5a5', color: 'var(--color-error)', margin: '16px 0', textAlign: 'left' }}>
+                            <span className="material-symbols-rounded" style={{ color: 'var(--color-error)' }}>block</span>
+                            <span><strong>Submission Blocked:</strong> You have already submitted this assessment. Duplicates are not allowed.</span>
+                        </div>
+                    )}
+
+                    {!isAlreadySubmitted && (isDropout || isAlumni) && (
                         <div className="error-message" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', borderRadius: 'var(--radius-md)', fontSize: '14px', background: '#fee2e2', border: '1.5px solid #fca5a5', color: 'var(--color-error)', margin: '16px 0', textAlign: 'left' }}>
                             <span className="material-symbols-rounded" style={{ color: 'var(--color-error)' }}>block</span>
                             <span><strong>Submission Blocked:</strong> Students marked as Dropout or Alumni are not allowed to submit assessments.</span>
@@ -580,9 +589,11 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     )}
 
                     <p className="confirm-warning">
-                        {isBlocked 
-                            ? "You are not permitted to submit this assessment."
-                            : "Are you sure you want to submit? You cannot change your answers after submission."
+                        {isAlreadySubmitted 
+                            ? "You have already completed this assessment."
+                            : isBlocked 
+                                ? "You are not permitted to submit this assessment."
+                                : "Are you sure you want to submit? You cannot change your answers after submission."
                         }
                     </p>
 

@@ -25,6 +25,7 @@ export interface StudentDetails {
     intervention: 'Prototype' | 'Propagate';
     udiseCode: string;
     geolocation?: string | null;
+    hasSubmitted?: boolean;
 }
 
 export const isDropoutOrAlumni = (grade: any): boolean => {
@@ -35,10 +36,11 @@ export const isDropoutOrAlumni = (grade: any): boolean => {
 
 interface StudentDetailsFormProps {
     assessmentGrade?: number;
+    assessmentId?: number;
     onSubmit: (details: StudentDetails) => void;
 }
 
-export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetailsFormProps) {
+export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: StudentDetailsFormProps) {
     const [studentId, setStudentId] = useState('');
     const [password, setPassword] = useState('');
     const [lookupResult, setLookupResult] = useState<StudentDetails | null>(null);
@@ -68,6 +70,30 @@ export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetails
             // Offline verification
             const student = await verifyStudentOffline(studentId, password);
             if (student) {
+                let hasSubmittedOffline = false;
+                if (assessmentId) {
+                    try {
+                        const { db } = await import('@/lib/db');
+                        const existingOffline = await db.offlineSubmissions
+                            .where('formId')
+                            .equals(assessmentId)
+                            .filter(s => s.studentFirstName.toLowerCase().trim() === student.first_name.toLowerCase().trim() && s.studentLastName.toLowerCase().trim() === student.last_name.toLowerCase().trim())
+                            .first();
+
+                        const existingSynced = await db.syncedSubmissions
+                            .where('assessmentId')
+                            .equals(assessmentId)
+                            .filter(s => s.studentFirstName.toLowerCase().trim() === student.first_name.toLowerCase().trim() && s.studentLastName.toLowerCase().trim() === student.last_name.toLowerCase().trim())
+                            .first();
+
+                        if (existingOffline || existingSynced) {
+                            hasSubmittedOffline = true;
+                        }
+                    } catch (dbErr) {
+                        console.error('Error checking offline submissions duplicate:', dbErr);
+                    }
+                }
+
                 setLookupResult({
                     studentId: student.student_id,
                     studentFirstName: student.first_name,
@@ -79,7 +105,8 @@ export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetails
                     schoolName: student.school_name,
                     udiseCode: student.udise_code,
                     intervention: (student.intervention as any) || 'Prototype',
-                    gender: student.gender
+                    gender: student.gender,
+                    hasSubmitted: hasSubmittedOffline
                 });
             } else {
                 setError('Offline: Student not found or incorrect password. (Note: Student data must be synced while online first)');
@@ -92,7 +119,7 @@ export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetails
             const res = await fetch('/api/students/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ studentId, password })
+                body: JSON.stringify({ studentId, password, assessmentId })
             });
 
             if (res.ok) {
@@ -108,6 +135,30 @@ export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetails
             // Fallback to offline verification if online request fails
             const student = await verifyStudentOffline(studentId, password);
             if (student) {
+                let hasSubmittedOffline = false;
+                if (assessmentId) {
+                    try {
+                        const { db } = await import('@/lib/db');
+                        const existingOffline = await db.offlineSubmissions
+                            .where('formId')
+                            .equals(assessmentId)
+                            .filter(s => s.studentFirstName.toLowerCase().trim() === student.first_name.toLowerCase().trim() && s.studentLastName.toLowerCase().trim() === student.last_name.toLowerCase().trim())
+                            .first();
+
+                        const existingSynced = await db.syncedSubmissions
+                            .where('assessmentId')
+                            .equals(assessmentId)
+                            .filter(s => s.studentFirstName.toLowerCase().trim() === student.first_name.toLowerCase().trim() && s.studentLastName.toLowerCase().trim() === student.last_name.toLowerCase().trim())
+                            .first();
+
+                        if (existingOffline || existingSynced) {
+                            hasSubmittedOffline = true;
+                        }
+                    } catch (dbErr) {
+                        console.error('Error checking offline submissions duplicate fallback:', dbErr);
+                    }
+                }
+
                 setLookupResult({
                     studentId: student.student_id,
                     studentFirstName: student.first_name,
@@ -119,7 +170,8 @@ export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetails
                     schoolName: student.school_name,
                     udiseCode: student.udise_code,
                     intervention: (student.intervention as any) || 'Prototype',
-                    gender: student.gender
+                    gender: student.gender,
+                    hasSubmitted: hasSubmittedOffline
                 });
             } else {
                 setError(`Connection failed: ${err.message || 'Unknown network error'}. Also could not find student locally.`);
@@ -188,7 +240,8 @@ export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetails
                 (() => {
                     const isDropout = String(lookupResult.classGrade).toLowerCase().trim() === 'dropout' || String(lookupResult.classGrade).toLowerCase().trim() === 'd';
                     const isAlumni = String(lookupResult.classGrade).toLowerCase().trim() === 'alumni' || String(lookupResult.classGrade).toLowerCase().trim() === 'a';
-                    const isBlocked = isDropout || isAlumni;
+                    const isAlreadySubmitted = !!lookupResult.hasSubmitted;
+                    const isBlocked = isDropout || isAlumni || isAlreadySubmitted;
                     const isMismatch = assessmentGrade !== undefined && !isBlocked && String(lookupResult.classGrade).trim() !== String(assessmentGrade).trim();
                     let gradeText = `Class ${lookupResult.classGrade}`;
                     if (isDropout) gradeText = "Dropout";
@@ -205,7 +258,14 @@ export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetails
                                 <h3>Confirm Your Identity</h3>
                             </div>
 
-                            {isBlocked && (
+                            {isAlreadySubmitted && (
+                                <div className="error-message" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', background: '#fee2e2', border: '1.5px solid #fca5a5' }}>
+                                    <span className="material-symbols-rounded" style={{ color: 'var(--color-error)' }}>block</span>
+                                    <span><strong>Submission Blocked:</strong> You have already submitted this assessment. Duplicates are not allowed.</span>
+                                </div>
+                            )}
+
+                            {!isAlreadySubmitted && isBlocked && (
                                 <div className="error-message" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', background: '#fee2e2', border: '1.5px solid #fca5a5' }}>
                                     <span className="material-symbols-rounded" style={{ color: 'var(--color-error)' }}>block</span>
                                     <span><strong>Submission Blocked:</strong> Students marked as Dropout or Alumni are not allowed to submit assessments.</span>
@@ -235,9 +295,11 @@ export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetails
                             </div>
 
                             <p className="confirm-text" style={{ color: isBlocked ? 'var(--color-error)' : 'var(--color-text-secondary)' }}>
-                                {isBlocked 
-                                    ? "You are not permitted to submit this assessment." 
-                                    : "Is this you? If yes, click below to start."
+                                {isAlreadySubmitted
+                                    ? "You have already completed this assessment."
+                                    : isBlocked 
+                                        ? "You are not permitted to submit this assessment." 
+                                        : "Is this you? If yes, click below to start."
                                 }
                             </p>
 
@@ -257,7 +319,7 @@ export function StudentDetailsForm({ assessmentGrade, onSubmit }: StudentDetails
                                     }}
                                 >
                                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%' }}>
-                                        {isBlocked ? 'Blocked' : 'Yes, Start Assessment'}
+                                        {isAlreadySubmitted ? 'Already Submitted' : isBlocked ? 'Blocked' : 'Yes, Start Assessment'}
                                         <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>arrow_forward</span>
                                     </span>
                                 </button>

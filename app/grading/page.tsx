@@ -419,54 +419,21 @@ export default function GradingPage() {
         }
     }, [grades]);
 
-    // handleMarkAllAsGraded
-    // ─────────────────────────────────────────────────────────────────────────
-    // Works ONLINE and OFFLINE.
-    // Flushes current in-memory grades for every "Needs Grading" submission to
-    // IndexedDB, then moves them into "Graded – Pending Sync" purely in local
-    // React state — no server call, no page reload.
-    const handleMarkAllAsGraded = useCallback(async () => {
-        if (needsGrading.length === 0) return;
-        setSaving(true);
-        try {
-            const toMark = [...needsGrading];
-
-            // Flush ALL grade entries (including synthetic keys for skipped questions)
-            await flushSubGrades(toMark);
-
-            setNeedsGrading([]);
-            setGradedPendingSync(prev => {
-                const existingIds = new Set(prev.map(s => s.submissionId));
-                const fresh = toMark.filter(s => !existingIds.has(s.submissionId));
-                return [...prev, ...fresh];
-            });
-
-            const pending = await getPendingOfflineGrades();
-            // Count unique submissions, not individual grade records (1 submission can have many answers)
-            setPendingGradesCount(new Set(pending.map(g => g.submissionId)).size);
-            setSaveMessage('All submissions marked as graded locally.');
-            setTimeout(() => setSaveMessage(null), 3000);
-        } catch (err) {
-            console.error('Mark as graded error:', err);
-            setSaveMessage('Failed to mark as graded.');
-        } finally {
-            setSaving(false);
-        }
-    }, [needsGrading, grades, flushSubGrades]);
-
     // handleSyncGradedToServer
     // ─────────────────────────────────────────────────────────────────────────
-    // Syncs ONLY submissions currently in "Graded – Pending Sync".
+    // Syncs ONLY submissions currently in "Graded – Pending Sync" (or target list if provided).
     // Submissions still in "Needs Grading" (not yet marked) are left alone.
     // Edge-case safe: marking → new subs arrive → Sync only touches the marked batch.
-    const handleSyncGradedToServer = useCallback(async () => {
+    const handleSyncGradedToServer = useCallback(async (subsToSync?: SyncedSubmission[]) => {
         if (!session) return;
         if (!onlineRef.current) {
             setSaveMessage('You are offline. Grades are saved locally and will sync when you reconnect.');
             setTimeout(() => setSaveMessage(null), 4000);
             return;
         }
-        if (gradedPendingSync.length === 0) {
+        
+        const targets = subsToSync || gradedPendingSync;
+        if (targets.length === 0) {
             setSaveMessage('No graded submissions to sync. Mark submissions as graded first.');
             setTimeout(() => setSaveMessage(null), 3000);
             return;
@@ -480,11 +447,11 @@ export default function GradingPage() {
             // value (e.g. 0) and never onChange'd them, saveOfflineGrade was never
             // called, so getPendingOfflineGrades() returns empty below, and the
             // early-return fires with "all already synced" — nothing gets sent to server.
-            await flushSubGrades(gradedPendingSync);
+            await flushSubGrades(targets);
 
-            // ── Step 1: Identify ONLY the submissions that are in gradedPendingSync ──
+            // ── Step 1: Identify ONLY the submissions that are in targets ──
             // This is the key guard: new ungraded submissions are NOT in this set.
-            const gradedIds = new Set(gradedPendingSync.map(s => s.submissionId));
+            const gradedIds = new Set(targets.map(s => s.submissionId));
 
             const allPendingGrades = await getPendingOfflineGrades();
 
@@ -545,7 +512,48 @@ export default function GradingPage() {
             setSyncing(false);
             setTimeout(() => setSaveMessage(null), 4000);
         }
-    }, [session, gradedPendingSync, loadSubmissions, loadRecentSubmissions, loadOfflinePendingSubs]);
+    }, [session, gradedPendingSync, loadSubmissions, loadRecentSubmissions, loadOfflinePendingSubs, flushSubGrades]);
+
+    // handleMarkAllAsGraded
+    // ─────────────────────────────────────────────────────────────────────────
+    // Works ONLINE and OFFLINE.
+    // Flushes current in-memory grades for every "Needs Grading" submission to
+    // IndexedDB, then moves them into "Graded – Pending Sync" purely in local
+    // React state.
+    // In Online mode, automatically triggers a sync to immediately submit the marks.
+    const handleMarkAllAsGraded = useCallback(async () => {
+        if (needsGrading.length === 0) return;
+        setSaving(true);
+        try {
+            const toMark = [...needsGrading];
+
+            // Flush ALL grade entries (including synthetic keys for skipped questions)
+            await flushSubGrades(toMark);
+
+            setNeedsGrading([]);
+            setGradedPendingSync(prev => {
+                const existingIds = new Set(prev.map(s => s.submissionId));
+                const fresh = toMark.filter(s => !existingIds.has(s.submissionId));
+                return [...prev, ...fresh];
+            });
+
+            const pending = await getPendingOfflineGrades();
+            // Count unique submissions, not individual grade records (1 submission can have many answers)
+            setPendingGradesCount(new Set(pending.map(g => g.submissionId)).size);
+            setSaveMessage('All submissions marked as graded locally.');
+            setTimeout(() => setSaveMessage(null), 3000);
+
+            // Auto-sync if online
+            if (onlineRef.current) {
+                await handleSyncGradedToServer(toMark);
+            }
+        } catch (err) {
+            console.error('Mark as graded error:', err);
+            setSaveMessage('Failed to mark as graded.');
+        } finally {
+            setSaving(false);
+        }
+    }, [needsGrading, grades, flushSubGrades, handleSyncGradedToServer]);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 

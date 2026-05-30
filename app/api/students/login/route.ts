@@ -8,7 +8,7 @@ import { sql } from '@/lib/postgres';
  */
 export async function POST(request: NextRequest) {
     try {
-        const { studentId, password } = await request.json();
+        const { studentId, password, assessmentId } = await request.json();
 
         if (!studentId || !password) {
             return NextResponse.json({ error: 'Student ID and Password are required' }, { status: 400 });
@@ -29,6 +29,20 @@ export async function POST(request: NextRequest) {
 
         const student = students[0];
 
+        // Check for duplicate submission if assessmentId is passed
+        let hasSubmitted = false;
+        if (assessmentId) {
+            const existing = await sql`
+                SELECT 1 FROM submissions 
+                WHERE student_id = ${student.student_id} 
+                AND assessment_id = ${parseInt(assessmentId)}
+                LIMIT 1
+            `;
+            if (existing.length > 0) {
+                hasSubmitted = true;
+            }
+        }
+
         return NextResponse.json({
             studentId: student.student_id,
             studentFirstName: student.first_name,
@@ -40,7 +54,8 @@ export async function POST(request: NextRequest) {
             schoolName: student.school_name,
             udiseCode: student.udise_code,
             intervention: student.intervention || 'Prototype',
-            gender: student.gender || 'Male'
+            gender: student.gender || 'Male',
+            hasSubmitted
         });
 
     } catch (error) {
