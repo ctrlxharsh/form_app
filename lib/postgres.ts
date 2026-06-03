@@ -274,3 +274,38 @@ export async function saveAnswer(
     `;
   return result[0]?.answer_id;
 }
+
+/**
+ * Save multiple answers in a single bulk insert query
+ */
+export async function saveAnswers(
+  answersList: Array<{
+    submissionId: number;
+    questionId: number;
+    answerText: string | null;
+    answerImageUrl: string | null;
+    selectedOptions: number[] | null;
+    rankingOrder: number[] | null;
+    marksAwarded: number | null;
+  }>
+) {
+  if (answersList.length === 0) return [];
+
+  const rows = answersList.map(a => ({
+    submission_id: a.submissionId,
+    question_id: a.questionId,
+    answer_text: a.answerText,
+    answer_image_url: a.answerImageUrl,
+    selected_options: a.selectedOptions,
+    ranking_order: a.rankingOrder,
+    marks_awarded: a.marksAwarded
+  }));
+
+  const result = await sql`
+    INSERT INTO submission_answers ${sql(rows, 'submission_id', 'question_id', 'answer_text', 'answer_image_url', 'selected_options', 'ranking_order', 'marks_awarded')}
+    RETURNING answer_id, question_id
+  `;
+
+  return result as unknown as Array<{ answer_id: number; question_id: number }>;
+}
+

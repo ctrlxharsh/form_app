@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createSubmission, saveAnswer, getFullAssessment, sql } from '@/lib/postgres';
+import { createSubmission, saveAnswers, getFullAssessment, sql } from '@/lib/postgres';
 import { logError } from '@/lib/error-logger';
 
 interface SubmitRequest {
@@ -75,6 +75,11 @@ export async function POST(request: NextRequest) {
                 OR 
                 (LOWER(TRIM(student_first_name)) = LOWER(TRIM(${studentFirstName})) 
                  AND LOWER(TRIM(student_last_name)) = LOWER(TRIM(${studentLastName})))
+            )
+            -- Exclude the current submission itself if we are retrying a sync for it
+            AND (
+                ${clientSubmissionId || null}::uuid IS NULL 
+                OR client_submission_id IS DISTINCT FROM ${clientSubmissionId}::uuid
             )
             LIMIT 1
         `;
@@ -235,24 +240,24 @@ export async function POST(request: NextRequest) {
 
         const submissionId = submissionResult.submission_id;
 
-        // Save each answer and collect IDs
-        const answerIds: Record<number, number> = {};
-        for (const [questionIdStr, answerData] of Object.entries(answers)) {
+        // Save all answers in bulk and collect IDs
+        const answersList = Object.entries(answers).map(([questionIdStr, answerData]) => {
             const questionId = parseInt(questionIdStr, 10);
-
-            const answerId = await saveAnswer(
+            return {
                 submissionId,
                 questionId,
-                answerData.text ?? null,           // answer_text
-                answerData.imageUrl ?? null,        // answer_image_url
-                answerData.selectedOptions ?? null, // selected_options (array)
-                answerData.rankingOrder ?? null,     // ranking_order (array)
-                answerData.marksAwarded ?? null      // marks_awarded (now calculated)
-            );
+                answerText: answerData.text ?? null,
+                answerImageUrl: answerData.imageUrl ?? null,
+                selectedOptions: answerData.selectedOptions ?? null,
+                rankingOrder: answerData.rankingOrder ?? null,
+                marksAwarded: answerData.marksAwarded ?? null
+            };
+        });
 
-            if (answerId) {
-                answerIds[questionId] = answerId;
-            }
+        const insertedAnswers = await saveAnswers(answersList);
+        const answerIds: Record<number, number> = {};
+        for (const row of insertedAnswers) {
+            answerIds[row.question_id] = row.answer_id;
         }
 
         return NextResponse.json({

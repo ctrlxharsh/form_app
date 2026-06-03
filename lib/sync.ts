@@ -501,6 +501,7 @@ async function syncSubmission(submission: OfflineSubmission): Promise<void> {
                 section: submission.section,
                 answers: updatedAnswers,
                 submittedByTeacher: submission.submittedByTeacher || null,
+                studentId: submission.studentId || null,
                 deviceInfo: submission.deviceInfo || null
             })
         });

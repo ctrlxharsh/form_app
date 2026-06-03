@@ -141,6 +141,7 @@ export interface OfflineSubmission {
     serverSubmissionId: number | null;
     errorMessage: string | null;
     submittedByTeacher?: number;  // User ID of teacher who submitted
+    studentId?: number | null;    // Numeric ID of the student
     deviceInfo?: any; // Track device OS, browser, model
     hasSubjectiveQuestions?: boolean; // true = needs teacher grading; false = auto-sync on reconnect
     assessmentTitle?: string;  // Assessment title for display in Recent Submissions

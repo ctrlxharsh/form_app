@@ -221,6 +221,7 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                         geolocation: studentDetails.geolocation || null,
                         answers: processedAnswers,
                         submittedByTeacher: teacherSession?.userId || null,
+                        studentId: studentDetails.studentId || null,
                         deviceInfo: {
                             deviceType,
                             osName,
@@ -364,6 +365,7 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     answers: processedAnswers,
                     status: 'pending',
                     submittedByTeacher: teacherSession?.userId,
+                    studentId: studentDetails.studentId || null,
                     hasSubjectiveQuestions,
                     deviceInfo: {
                         deviceType,
