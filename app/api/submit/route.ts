@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
             -- Exclude the current submission itself if we are retrying a sync for it
             AND (
                 ${clientSubmissionId || null}::uuid IS NULL 
-                OR client_submission_id IS DISTINCT FROM ${clientSubmissionId}::uuid
+                OR client_submission_id IS DISTINCT FROM ${clientSubmissionId || null}::uuid
             )
             LIMIT 1
         `;
