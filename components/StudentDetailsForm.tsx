@@ -58,6 +58,57 @@ export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: 
         }
     }, []);
 
+    // Get all sibling assessment IDs (same group or same title+class) for duplicate checking
+    const getSiblingAssessmentIds = async (currentAssessmentId: number): Promise<number[]> => {
+        try {
+            const { getCachedAssessments } = await import('@/lib/db');
+            const allAssessments = await getCachedAssessments();
+            const current = allAssessments.find(a => a.assessment_id === currentAssessmentId);
+            if (!current) return [currentAssessmentId];
+
+            const siblings = allAssessments.filter(a => {
+                if (current.group_identifier && a.group_identifier) {
+                    return a.group_identifier === current.group_identifier;
+                }
+                // Fallback: same title + class_grade
+                return a.title.trim().toLowerCase() === current.title.trim().toLowerCase()
+                    && a.class_grade === current.class_grade;
+            });
+            return siblings.length > 0 ? siblings.map(a => a.assessment_id) : [currentAssessmentId];
+        } catch {
+            return [currentAssessmentId];
+        }
+    };
+
+    // Check offline + synced submissions across a set of assessment IDs
+    const checkOfflineDuplicate = async (siblingIds: number[], firstName: string, lastName: string): Promise<boolean> => {
+        try {
+            const { db } = await import('@/lib/db');
+            const fnLower = firstName.toLowerCase().trim();
+            const lnLower = lastName.toLowerCase().trim();
+
+            for (const aId of siblingIds) {
+                const existingOffline = await db.offlineSubmissions
+                    .where('formId')
+                    .equals(aId)
+                    .filter(s => s.studentFirstName.toLowerCase().trim() === fnLower && s.studentLastName.toLowerCase().trim() === lnLower)
+                    .first();
+                if (existingOffline) return true;
+
+                const existingSynced = await db.syncedSubmissions
+                    .where('assessmentId')
+                    .equals(aId)
+                    .filter(s => s.studentFirstName.toLowerCase().trim() === fnLower && s.studentLastName.toLowerCase().trim() === lnLower)
+                    .first();
+                if (existingSynced) return true;
+            }
+            return false;
+        } catch (dbErr) {
+            console.error('Error checking offline submissions duplicate:', dbErr);
+            return false;
+        }
+    };
+
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -72,26 +123,8 @@ export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: 
             if (student) {
                 let hasSubmittedOffline = false;
                 if (assessmentId) {
-                    try {
-                        const { db } = await import('@/lib/db');
-                        const existingOffline = await db.offlineSubmissions
-                            .where('formId')
-                            .equals(assessmentId)
-                            .filter(s => s.studentFirstName.toLowerCase().trim() === student.first_name.toLowerCase().trim() && s.studentLastName.toLowerCase().trim() === student.last_name.toLowerCase().trim())
-                            .first();
-
-                        const existingSynced = await db.syncedSubmissions
-                            .where('assessmentId')
-                            .equals(assessmentId)
-                            .filter(s => s.studentFirstName.toLowerCase().trim() === student.first_name.toLowerCase().trim() && s.studentLastName.toLowerCase().trim() === student.last_name.toLowerCase().trim())
-                            .first();
-
-                        if (existingOffline || existingSynced) {
-                            hasSubmittedOffline = true;
-                        }
-                    } catch (dbErr) {
-                        console.error('Error checking offline submissions duplicate:', dbErr);
-                    }
+                    const siblingIds = await getSiblingAssessmentIds(assessmentId);
+                    hasSubmittedOffline = await checkOfflineDuplicate(siblingIds, student.first_name, student.last_name);
                 }
 
                 setLookupResult({
@@ -137,26 +170,8 @@ export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: 
             if (student) {
                 let hasSubmittedOffline = false;
                 if (assessmentId) {
-                    try {
-                        const { db } = await import('@/lib/db');
-                        const existingOffline = await db.offlineSubmissions
-                            .where('formId')
-                            .equals(assessmentId)
-                            .filter(s => s.studentFirstName.toLowerCase().trim() === student.first_name.toLowerCase().trim() && s.studentLastName.toLowerCase().trim() === student.last_name.toLowerCase().trim())
-                            .first();
-
-                        const existingSynced = await db.syncedSubmissions
-                            .where('assessmentId')
-                            .equals(assessmentId)
-                            .filter(s => s.studentFirstName.toLowerCase().trim() === student.first_name.toLowerCase().trim() && s.studentLastName.toLowerCase().trim() === student.last_name.toLowerCase().trim())
-                            .first();
-
-                        if (existingOffline || existingSynced) {
-                            hasSubmittedOffline = true;
-                        }
-                    } catch (dbErr) {
-                        console.error('Error checking offline submissions duplicate fallback:', dbErr);
-                    }
+                    const siblingIds = await getSiblingAssessmentIds(assessmentId);
+                    hasSubmittedOffline = await checkOfflineDuplicate(siblingIds, student.first_name, student.last_name);
                 }
 
                 setLookupResult({

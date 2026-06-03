@@ -45,40 +45,52 @@ export async function getFullAssessment(assessmentId: number) {
 
   const assessment = assessments[0];
 
-  // Get sections
-  const sections = await sql`
-    SELECT section_id, section_title, section_instructions, order_index
-    FROM assessment_sections
-    WHERE assessment_id = ${assessmentId}
-    ORDER BY order_index
-    `;
-
-  // For each section, get questions and options
-  for (const section of sections) {
-    const questions = await sql`
-      SELECT question_id, question_type, question_text, question_image_url,
-    marks, is_required, order_index, correct_answer, min_value, max_value, parameter_mapping
-      FROM questions
-      WHERE section_id = ${section.section_id}
+  // Fetch sections, questions, and options in parallel (3 queries instead of N+1)
+  const [sections, allQuestions, allOptions] = await Promise.all([
+    sql`
+      SELECT section_id, section_title, section_instructions, order_index
+      FROM assessment_sections
+      WHERE assessment_id = ${assessmentId}
       ORDER BY order_index
-    `;
+    `,
+    sql`
+      SELECT q.question_id, q.section_id, q.question_type, q.question_text, q.question_image_url,
+             q.marks, q.is_required, q.order_index, q.correct_answer, q.min_value, q.max_value, q.parameter_mapping
+      FROM questions q
+      JOIN assessment_sections s ON q.section_id = s.section_id
+      WHERE s.assessment_id = ${assessmentId}
+      ORDER BY q.order_index
+    `,
+    sql`
+      SELECT qo.option_id, qo.question_id, qo.option_text, qo.option_image_url, qo.is_correct, qo.order_index, qo.marks
+      FROM question_options qo
+      JOIN questions q ON qo.question_id = q.question_id
+      JOIN assessment_sections s ON q.section_id = s.section_id
+      WHERE s.assessment_id = ${assessmentId}
+      ORDER BY qo.order_index
+    `
+  ]);
 
-    // Get options for MCQ/multiple_select/ranking questions
-    for (const question of questions) {
-      if (['mcq', 'multiple_select', 'ranking'].includes(question.question_type)) {
-        const options = await sql`
-          SELECT option_id, option_text, option_image_url, is_correct, order_index, marks
-          FROM question_options
-          WHERE question_id = ${question.question_id}
-          ORDER BY order_index
-    `;
-        question.options = options;
-      } else {
-        question.options = [];
-      }
-    }
+  // Index options by question_id
+  const optionsByQuestion = new Map<number, any[]>();
+  for (const opt of allOptions) {
+    const qId = opt.question_id;
+    if (!optionsByQuestion.has(qId)) optionsByQuestion.set(qId, []);
+    optionsByQuestion.get(qId)!.push(opt);
+  }
 
-    section.questions = questions;
+  // Index questions by section_id and attach options
+  const questionsBySection = new Map<number, any[]>();
+  for (const q of allQuestions) {
+    q.options = optionsByQuestion.get(q.question_id) || [];
+    const sId = q.section_id;
+    if (!questionsBySection.has(sId)) questionsBySection.set(sId, []);
+    questionsBySection.get(sId)!.push(q);
+  }
+
+  // Attach questions to sections
+  for (const section of sections) {
+    section.questions = questionsBySection.get(section.section_id) || [];
   }
 
   assessment.sections = sections;

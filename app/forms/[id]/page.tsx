@@ -40,7 +40,7 @@ export default function FormPage({ params }: PageProps) {
         }
     }, []);
 
-    // Fetch form data
+    // Fetch form data — cache-first strategy
     useEffect(() => {
         async function loadForm() {
             setLoading(true);
@@ -54,11 +54,37 @@ export default function FormPage({ params }: PageProps) {
             }
 
             try {
-                // Use robust connectivity check
+                // Step 1: Try cache immediately (no network wait)
+                const cached = await getCachedForm(assessmentId);
+
+                if (cached) {
+                    // Show cached form instantly
+                    setFormData(cached.formData);
+                    setLoading(false);
+
+                    // Background refresh: fetch from API if online, update cache silently
+                    checkActualConnectivity().then(async (online) => {
+                        if (!online) return;
+                        try {
+                            const response = await fetch(`/api/forms/${assessmentId}`);
+                            if (response.ok) {
+                                const data = await response.json();
+                                setFormData(data);
+                                // Update cache in background
+                                const { cacheForm } = await import('@/lib/db');
+                                cacheForm(data).catch(console.error);
+                            }
+                        } catch {
+                            // Ignore — we already have the cached version showing
+                        }
+                    });
+                    return;
+                }
+
+                // Step 2: No cache — must fetch from network
                 const online = await checkActualConnectivity();
 
                 if (online) {
-                    // Try to fetch from API
                     const response = await fetch(`/api/forms/${assessmentId}`);
 
                     if (response.ok) {
@@ -70,25 +96,11 @@ export default function FormPage({ params }: PageProps) {
                         throw new Error('Failed to fetch form');
                     }
                 } else {
-                    // Offline: Try to load from cache
-                    const cached = await getCachedForm(assessmentId);
-
-                    if (cached) {
-                        setFormData(cached.formData);
-                    } else {
-                        setError('Form not available offline. Please save it for offline use while online.');
-                    }
+                    setError('Form not available offline. Please save it for offline use while online.');
                 }
             } catch (err) {
                 console.error('Error loading form:', err);
-
-                // Try cache as fallback
-                const cached = await getCachedForm(assessmentId);
-                if (cached) {
-                    setFormData(cached.formData);
-                } else {
-                    setError('Failed to load form. Please try again.');
-                }
+                setError('Failed to load form. Please try again.');
             } finally {
                 setLoading(false);
             }

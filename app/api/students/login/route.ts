@@ -29,13 +29,22 @@ export async function POST(request: NextRequest) {
 
         const student = students[0];
 
-        // Check for duplicate submission if assessmentId is passed
+        // Check for duplicate submission (across all language variants) if assessmentId is passed
         let hasSubmitted = false;
         if (assessmentId) {
             const existing = await sql`
                 SELECT 1 FROM submissions 
                 WHERE student_id = ${student.student_id} 
-                AND assessment_id = ${parseInt(assessmentId)}
+                AND assessment_id IN (
+                    SELECT a2.assessment_id FROM assessments a1
+                    JOIN assessments a2 ON (
+                        a2.group_identifier = a1.group_identifier
+                        OR (a1.group_identifier IS NULL AND a2.group_identifier IS NULL
+                            AND LOWER(TRIM(a2.title)) = LOWER(TRIM(a1.title))
+                            AND a2.class_grade = a1.class_grade)
+                    )
+                    WHERE a1.assessment_id = ${parseInt(assessmentId)}
+                )
                 LIMIT 1
             `;
             if (existing.length > 0) {

@@ -57,10 +57,19 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Class grade must be between 4 and 10' }, { status: 400 });
         }
 
-        // Check for duplicate submission
+        // Check for duplicate submission across all language variants (same group_identifier)
         const existing = await sql`
             SELECT 1 FROM submissions 
-            WHERE assessment_id = ${assessmentId}
+            WHERE assessment_id IN (
+                SELECT a2.assessment_id FROM assessments a1
+                JOIN assessments a2 ON (
+                    a2.group_identifier = a1.group_identifier
+                    OR (a1.group_identifier IS NULL AND a2.group_identifier IS NULL 
+                        AND LOWER(TRIM(a2.title)) = LOWER(TRIM(a1.title)) 
+                        AND a2.class_grade = a1.class_grade)
+                )
+                WHERE a1.assessment_id = ${assessmentId}
+            )
             AND (
                 (student_id IS NOT NULL AND student_id = ${studentId || null})
                 OR 
