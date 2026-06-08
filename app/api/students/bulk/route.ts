@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
                 fathers_name: s.fatherName || '',
                 mothers_name: s.motherName || '',
                 school_id: school.school_id,
+                school_udise: school.udise_code,
                 class_grade: classGrade,
                 section: s.section || 'A',
                 password: s.password || '01012001',

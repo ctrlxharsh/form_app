@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
         if (isPrivileged) {
             if (schoolId && classGrade) {
                 students = await sql`
-                    SELECT s.*, sc.school_name 
+                    SELECT s.*, sc.school_name, sc.udise_code, sc.intervention 
                     FROM students s
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
                     WHERE s.school_id = ${parseInt(schoolId)} 
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
                 `;
             } else if (schoolId) {
                  students = await sql`
-                    SELECT s.*, sc.school_name 
+                    SELECT s.*, sc.school_name, sc.udise_code, sc.intervention 
                     FROM students s
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
                     WHERE s.school_id = ${parseInt(schoolId)} 
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
                 `;
             } else {
                 students = await sql`
-                    SELECT s.*, sc.school_name 
+                    SELECT s.*, sc.school_name, sc.udise_code, sc.intervention 
                     FROM students s
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
                     ORDER BY s.school_id, s.class_grade, s.first_name, s.last_name
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         } else if (role === 'Program Manager') {
             if (schoolId && classGrade) {
                 students = await sql`
-                    SELECT DISTINCT s.*, sc.school_name 
+                    SELECT DISTINCT s.*, sc.school_name, sc.udise_code, sc.intervention 
                     FROM students s
                     JOIN teacher_schools ts ON s.school_id = ts.school_id
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
                 `;
             } else if (schoolId) {
                  students = await sql`
-                    SELECT DISTINCT s.*, sc.school_name 
+                    SELECT DISTINCT s.*, sc.school_name, sc.udise_code, sc.intervention 
                     FROM students s
                     JOIN teacher_schools ts ON s.school_id = ts.school_id
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
                 `;
             } else {
                 students = await sql`
-                    SELECT DISTINCT s.*, sc.school_name 
+                    SELECT DISTINCT s.*, sc.school_name, sc.udise_code, sc.intervention 
                     FROM students s
                     JOIN teacher_schools ts ON s.school_id = ts.school_id
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
         } else {
             if (schoolId && classGrade) {
                 students = await sql`
-                    SELECT s.*, sc.school_name 
+                    SELECT s.*, sc.school_name, sc.udise_code, sc.intervention 
                     FROM students s
                     JOIN teacher_schools ts ON s.school_id = ts.school_id
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
                 `;
             } else if (schoolId) {
                  students = await sql`
-                    SELECT s.*, sc.school_name 
+                    SELECT s.*, sc.school_name, sc.udise_code, sc.intervention 
                     FROM students s
                     JOIN teacher_schools ts ON s.school_id = ts.school_id
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
                 `;
             } else {
                 students = await sql`
-                    SELECT s.*, sc.school_name 
+                    SELECT s.*, sc.school_name, sc.udise_code, sc.intervention 
                     FROM students s
                     JOIN teacher_schools ts ON s.school_id = ts.school_id
                     LEFT JOIN schools sc ON s.school_id = sc.school_id
@@ -184,14 +184,17 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        const schools = await sql`SELECT udise_code FROM schools WHERE school_id = ${parseInt(schoolId)}`;
+        const schoolUdise = schools.length > 0 ? schools[0].udise_code : '';
+
         const result = await sql`
             INSERT INTO students (
                 unique_id, unique_cohort_id, first_name, last_name, fathers_name, mothers_name, 
-                school_id, class_grade, section, password,
+                school_id, school_udise, class_grade, section, password,
                 date_of_birth, fathers_occupation, mothers_occupation, address, email_id
             ) VALUES (
                 ${uniqueId}, ${cohortId}, ${firstName}, ${lastName}, ${fathersName}, ${mothersName}, 
-                ${parseInt(schoolId)}, ${classGrade ? classGrade.toString() : null}, ${section}, ${password || '01012001'},
+                ${parseInt(schoolId)}, ${schoolUdise}, ${classGrade ? classGrade.toString() : null}, ${section}, ${password || '01012001'},
                 ${dateOfBirth || null}, ${fathersOccupation || ''}, ${mothersOccupation || ''}, ${address || ''}, ${emailId || ''}
             )
             RETURNING *
