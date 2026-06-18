@@ -24,12 +24,13 @@ import { isOnline, checkActualConnectivity } from '@/lib/sync';
 
 interface FormRendererProps {
     formData: FormData;
+    selectedLanguage: string;
     onComplete: (submissionId: number | string) => void;
 }
 
 type Step = 'student-details' | 'sections' | 'confirm' | 'complete';
 
-export function FormRenderer({ formData, onComplete }: FormRendererProps) {
+export function FormRenderer({ formData, selectedLanguage, onComplete }: FormRendererProps) {
     const [step, setStep] = useState<Step>('student-details');
     const [studentDetails, setStudentDetails] = useState<StudentDetails | null>(null);
     const [answers, setAnswers] = useState<Record<number, AnswerValue>>({});
@@ -87,10 +88,17 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
             if (!q.is_required) return false;
 
             const ans = answers[q.question_id];
+            const type = q.question_type;
+
+            // Range questions always have a default value (even if not explicitly touched yet)
+            if (type === 'range') return false;
+
             if (!ans) return true;
 
-            const type = q.question_type;
             if (type === 'mcq' || type === 'true_false' || type === 'multiple_select') {
+                if (type === 'true_false') {
+                    return (!ans.selectedOptions || ans.selectedOptions.length === 0) && (!ans.text || ans.text.trim() === '');
+                }
                 return !ans.selectedOptions || ans.selectedOptions.length === 0;
             } else if (type === 'ranking') {
                 return !ans.rankingOrder || ans.rankingOrder.length === 0;
@@ -217,7 +225,7 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                         gender: studentDetails.gender,
                         classGrade: studentDetails.classGrade,
                         section: studentDetails.section,
-                        selectedLanguage: formData.language || 'English',
+                        selectedLanguage: selectedLanguage,
                         geolocation: studentDetails.geolocation || null,
                         answers: processedAnswers,
                         submittedByTeacher: teacherSession?.userId || null,
@@ -356,7 +364,7 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
                     assessmentTitle: formData.title,
                     studentFirstName: studentDetails.studentFirstName,
                     studentLastName: studentDetails.studentLastName,
-                    selectedLanguage: formData.language || 'English',
+                    selectedLanguage: selectedLanguage,
                     totalMarks: formData.total_marks,
                     geolocation: studentDetails.geolocation || null,
                     gender: studentDetails.gender,
@@ -419,6 +427,7 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
             <div className="form-wrapper">
                 <FormHeader
                     formData={formData}
+                    selectedLanguage={selectedLanguage}
                     isCached={isCached}
                     onSaveForOffline={handleSaveForOffline}
                 />
@@ -658,10 +667,12 @@ export function FormRenderer({ formData, onComplete }: FormRendererProps) {
 // Form Header Component
 function FormHeader({
     formData,
+    selectedLanguage,
     isCached,
     onSaveForOffline
 }: {
     formData: FormData;
+    selectedLanguage: string;
     isCached: boolean;
     onSaveForOffline: () => void;
 }) {
@@ -681,7 +692,7 @@ function FormHeader({
                 </Link>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <h1 className="form-title">{formData.title}</h1>
-                    {formData.language && (
+                    {selectedLanguage && (
                         <span style={{
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -697,7 +708,7 @@ function FormHeader({
                             flexShrink: 0
                         }}>
                             <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>language</span>
-                            {formData.language}
+                            {selectedLanguage}
                         </span>
                     )}
                 </div>

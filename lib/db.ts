@@ -30,6 +30,7 @@ export interface FormData {
     class_grade: number;
     status: string;
     language?: string;
+    languages?: string[];     // All available languages for this assessment
     group_identifier?: string;
     academic_year?: string;
     total_marks?: number;
@@ -42,6 +43,7 @@ export interface FormSection {
     section_instructions: string | null;
     order_index: number;
     questions: FormQuestion[];
+    translations?: Record<string, { section_title: string; section_instructions: string | null }>;
 }
 
 export interface FormQuestion {
@@ -51,12 +53,15 @@ export interface FormQuestion {
     question_image_url: string | null;
     marks: number | null;
     parameter_mapping?: string | null;
+    parameter_id?: number | null;
+    subparameter_id?: number | null;
     is_required: boolean;
     order_index: number;
     correct_answer: string | null;
     min_value: number | null;
     max_value: number | null;
     options: QuestionOption[];
+    translations?: Record<string, { question_text: string }>;
 }
 
 export type QuestionType =
@@ -78,6 +83,7 @@ export interface QuestionOption {
     is_correct: boolean;
     marks?: number;
     order_index: number;
+    translations?: Record<string, { option_text: string }>;
 }
 
 /** Cached school for offline UDISE validation */
@@ -98,6 +104,7 @@ export interface CachedAssessment {
     description: string | null;
     class_grade: number;
     language?: string;
+    languages?: string[];
     group_identifier?: string;
     academic_year?: string;
 }
@@ -231,6 +238,7 @@ export interface OfflineGrade {
     marks: number;
     gradedAt: Date;
     synced: boolean;
+    isDraft?: boolean;
 }
 
 /** User credentials cached for offline login */
@@ -730,7 +738,8 @@ export async function getCachedAssessmentsForTeacher(
 export async function saveOfflineGrade(
     submissionId: number,
     answerId: number,
-    marks: number
+    marks: number,
+    isDraft: boolean = true
 ): Promise<void> {
     // Check if grade already exists
     const existing = await db.offlineGrades
@@ -742,7 +751,8 @@ export async function saveOfflineGrade(
         await db.offlineGrades.update(existing.id!, {
             marks,
             gradedAt: new Date(),
-            synced: false
+            synced: false,
+            isDraft
         });
     } else {
         await db.offlineGrades.add({
@@ -750,7 +760,8 @@ export async function saveOfflineGrade(
             answerId,
             marks,
             gradedAt: new Date(),
-            synced: false
+            synced: false,
+            isDraft
         });
     }
 
@@ -771,7 +782,7 @@ export async function saveOfflineGrade(
  */
 export async function getPendingOfflineGrades(): Promise<OfflineGrade[]> {
     return db.offlineGrades
-        .filter(g => !g.synced) // Handle false/0 correctly
+        .filter(g => !g.synced && !g.isDraft) // Handle false/0 and draft correctly
         .toArray();
 }
 
@@ -789,7 +800,7 @@ export async function markGradesAsSynced(gradeIds: number[]): Promise<void> {
  */
 export async function getSubmissionIdsWithPendingGrades(): Promise<Set<number>> {
     const pendingGrades = await db.offlineGrades
-        .filter(g => !g.synced) // Handle false/0 correctly
+        .filter(g => !g.synced && !g.isDraft) // Handle false/0 and draft correctly
         .toArray();
     return new Set(pendingGrades.map(g => g.submissionId));
 }

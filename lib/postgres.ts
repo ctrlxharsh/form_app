@@ -32,9 +32,9 @@ export { client };
  * Mirrors: get_full_assessment() from Streamlit
  */
 export async function getFullAssessment(assessmentId: number) {
-  // Get assessment base info
+  // Get assessment base info (language column is now removed from assessments table)
   const assessments = await sql`
-    SELECT assessment_id, title, description, class_grade, status, language, group_identifier, academic_year, total_marks
+    SELECT assessment_id, title, description, class_grade, status, group_identifier, academic_year, total_marks
     FROM assessments
     WHERE assessment_id = ${assessmentId}
   `;
@@ -45,8 +45,8 @@ export async function getFullAssessment(assessmentId: number) {
 
   const assessment = assessments[0];
 
-  // Fetch sections, questions, and options in parallel (3 queries instead of N+1)
-  const [sections, allQuestions, allOptions] = await Promise.all([
+  // Fetch sections, questions, options, languages and all translations in parallel
+  const [sections, allQuestions, allOptions, langs, secTrans, qTrans, optTrans] = await Promise.all([
     sql`
       SELECT section_id, section_title, section_instructions, order_index
       FROM assessment_sections
@@ -55,7 +55,7 @@ export async function getFullAssessment(assessmentId: number) {
     `,
     sql`
       SELECT q.question_id, q.section_id, q.question_type, q.question_text, q.question_image_url,
-             q.marks, q.is_required, q.order_index, q.correct_answer, q.min_value, q.max_value, q.parameter_mapping
+             q.marks, q.is_required, q.order_index, q.correct_answer, q.min_value, q.max_value, q.parameter_id, q.subparameter_id
       FROM questions q
       JOIN assessment_sections s ON q.section_id = s.section_id
       WHERE s.assessment_id = ${assessmentId}
@@ -68,32 +68,91 @@ export async function getFullAssessment(assessmentId: number) {
       JOIN assessment_sections s ON q.section_id = s.section_id
       WHERE s.assessment_id = ${assessmentId}
       ORDER BY qo.order_index
+    `,
+    sql`
+      SELECT language FROM public.assessment_languages WHERE assessment_id = ${assessmentId}
+    `,
+    sql`
+      SELECT section_id, language, section_title, section_instructions
+      FROM public.section_translations
+      WHERE section_id IN (
+        SELECT section_id FROM assessment_sections WHERE assessment_id = ${assessmentId}
+      )
+    `,
+    sql`
+      SELECT question_id, language, question_text
+      FROM public.question_translations
+      WHERE question_id IN (
+        SELECT question_id FROM questions q 
+        JOIN assessment_sections s ON q.section_id = s.section_id 
+        WHERE s.assessment_id = ${assessmentId}
+      )
+    `,
+    sql`
+      SELECT option_id, language, option_text
+      FROM public.option_translations
+      WHERE option_id IN (
+        SELECT option_id FROM question_options qo
+        JOIN questions q ON qo.question_id = q.question_id
+        JOIN assessment_sections s ON q.section_id = s.section_id
+        WHERE s.assessment_id = ${assessmentId}
+      )
     `
   ]);
 
-  // Index options by question_id
+  // Index translations by language
+  const secTransMap = new Map<number, Record<string, { section_title: string, section_instructions: string | null }>>();
+  for (const t of secTrans) {
+    if (!secTransMap.has(t.section_id)) secTransMap.set(t.section_id, {});
+    secTransMap.get(t.section_id)![t.language] = {
+      section_title: t.section_title,
+      section_instructions: t.section_instructions
+    };
+  }
+
+  const qTransMap = new Map<number, Record<string, { question_text: string }>>();
+  for (const t of qTrans) {
+    if (!qTransMap.has(t.question_id)) qTransMap.set(t.question_id, {});
+    qTransMap.get(t.question_id)![t.language] = {
+      question_text: t.question_text
+    };
+  }
+
+  const optTransMap = new Map<number, Record<string, { option_text: string }>>();
+  for (const t of optTrans) {
+    if (!optTransMap.has(t.option_id)) optTransMap.set(t.option_id, {});
+    optTransMap.get(t.option_id)![t.language] = {
+      option_text: t.option_text
+    };
+  }
+
+  // Index options by question_id and attach translations
   const optionsByQuestion = new Map<number, any[]>();
   for (const opt of allOptions) {
+    opt.translations = optTransMap.get(opt.option_id) || {};
     const qId = opt.question_id;
     if (!optionsByQuestion.has(qId)) optionsByQuestion.set(qId, []);
     optionsByQuestion.get(qId)!.push(opt);
   }
 
-  // Index questions by section_id and attach options
+  // Index questions by section_id and attach options + translations
   const questionsBySection = new Map<number, any[]>();
   for (const q of allQuestions) {
     q.options = optionsByQuestion.get(q.question_id) || [];
+    q.translations = qTransMap.get(q.question_id) || {};
     const sId = q.section_id;
     if (!questionsBySection.has(sId)) questionsBySection.set(sId, []);
     questionsBySection.get(sId)!.push(q);
   }
 
-  // Attach questions to sections
+  // Attach questions and translations to sections
   for (const section of sections) {
     section.questions = questionsBySection.get(section.section_id) || [];
+    section.translations = secTransMap.get(section.section_id) || {};
   }
 
   assessment.sections = sections;
+  assessment.languages = langs.map(l => l.language);
   return assessment;
 }
 
@@ -103,10 +162,12 @@ export async function getFullAssessment(assessmentId: number) {
  */
 export async function getPublishedAssessmentsByClass(classGrade: number) {
   return sql`
-    SELECT assessment_id, title, description, class_grade, language, group_identifier, academic_year
-    FROM assessments
-    WHERE status = 'published' AND is_active = true AND class_grade = ${classGrade}
-    ORDER BY title
+    SELECT a.assessment_id, a.title, a.description, a.class_grade, ARRAY_AGG(DISTINCT al.language) as languages, a.group_identifier, a.academic_year
+    FROM assessments a
+    JOIN public.assessment_languages al ON a.assessment_id = al.assessment_id
+    WHERE a.status = 'published' AND a.class_grade = ${classGrade}
+    GROUP BY a.assessment_id, a.title, a.description, a.class_grade, a.group_identifier, a.academic_year
+    ORDER BY a.title
     `;
 }
 
@@ -115,10 +176,12 @@ export async function getPublishedAssessmentsByClass(classGrade: number) {
  */
 export async function getAllPublishedAssessments() {
   return sql`
-    SELECT assessment_id, title, description, class_grade, language, group_identifier, academic_year
-    FROM assessments
-    WHERE status = 'published' AND is_active = true
-    ORDER BY class_grade, title
+    SELECT a.assessment_id, a.title, a.description, a.class_grade, ARRAY_AGG(DISTINCT al.language) as languages, a.group_identifier, a.academic_year
+    FROM assessments a
+    JOIN public.assessment_languages al ON a.assessment_id = al.assessment_id
+    WHERE a.status = 'published'
+    GROUP BY a.assessment_id, a.title, a.description, a.class_grade, a.group_identifier, a.academic_year
+    ORDER BY a.class_grade, a.title
     `;
 }
 

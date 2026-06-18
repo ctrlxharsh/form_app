@@ -94,7 +94,7 @@ export default function GradingPage() {
     const prevOnlineRef = useRef(true);
     const [pendingGradesCount, setPendingGradesCount] = useState(0);
     const [showSyncWarning, setShowSyncWarning] = useState(false);
-    const [showMarkAllWarning, setShowMarkAllWarning] = useState(false);
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
     // ── Session + connectivity ────────────────────────────────────────────────
 
@@ -232,9 +232,9 @@ export default function GradingPage() {
         // 7. Initialise grades state from IndexedDB and server data
         const allSubs = [...allNeedsGrading, ...gradedPending];
         const { db } = await import('@/lib/db');
-        const pendingGrades = await getPendingOfflineGrades();
+        const allOfflineGrades = await db.offlineGrades.toArray();
         const localGradesMap: Record<number, Record<number, number>> = {};
-        for (const pg of pendingGrades) {
+        for (const pg of allOfflineGrades) {
             if (!localGradesMap[pg.submissionId]) localGradesMap[pg.submissionId] = {};
             localGradesMap[pg.submissionId][pg.answerId] = pg.marks;
         }
@@ -411,8 +411,8 @@ export default function GradingPage() {
     // Reads every entry from the grades[submissionId] map (including synthetic
     // -questionId keys for skipped questions) and persists them to IndexedDB.
     // Must be called before any sync reads from getPendingOfflineGrades().
-    const flushSubGrades = useCallback(async (subs: SyncedSubmission[]) => {
-        console.log('[DEBUG] flushSubGrades started for submissions:', subs.map(s => s.submissionId));
+    const flushSubGrades = useCallback(async (subs: SyncedSubmission[], isDraft: boolean = true) => {
+        console.log('[DEBUG] flushSubGrades started for submissions:', subs.map(s => s.submissionId), 'isDraft:', isDraft);
         for (const sub of subs) {
             const subGrades = grades[sub.submissionId];
             console.log(`[DEBUG] flushSubGrades checking sub ${sub.submissionId}. Grades in memory:`, subGrades);
@@ -421,7 +421,7 @@ export default function GradingPage() {
                 // Fallback: If no entry exists in memory, write 0s for all subjective questions
                 for (const ans of sub.subjectiveAnswers) {
                     console.log(`[DEBUG] Writing default 0 grade for sub ${sub.submissionId}, ans ${ans.answerId}`);
-                    await saveOfflineGrade(sub.submissionId, ans.answerId, 0);
+                    await saveOfflineGrade(sub.submissionId, ans.answerId, 0, isDraft);
                 }
                 continue;
             }
@@ -429,7 +429,7 @@ export default function GradingPage() {
             // synthetic answerId entries (for skipped questions) are included.
             for (const [answerIdStr, mark] of Object.entries(subGrades)) {
                 console.log(`[DEBUG] Saving offline grade for sub ${sub.submissionId}, answerId ${answerIdStr} = ${mark}`);
-                await saveOfflineGrade(sub.submissionId, Number(answerIdStr), mark);
+                await saveOfflineGrade(sub.submissionId, Number(answerIdStr), mark, isDraft);
             }
         }
         console.log('[DEBUG] flushSubGrades completed.');
@@ -468,7 +468,7 @@ export default function GradingPage() {
         try {
             // ── Step 0: Flush current in-memory grades to IndexedDB FIRST ───────────────
             console.log('[DEBUG] Step 0: Triggering flushSubGrades before sync...');
-            await flushSubGrades(targets);
+            await flushSubGrades(targets, false);
 
             // ── Step 1: Identify ONLY the submissions that are in targets ──
             const gradedIds = new Set(targets.map(s => s.submissionId));
@@ -571,8 +571,48 @@ export default function GradingPage() {
     // IndexedDB, then moves them into "Graded – Pending Sync" purely in local
     // React state.
     // In Online mode, automatically triggers a sync to immediately submit the marks.
-    const handleMarkAllAsGraded = useCallback(async () => {
-        console.log('=== [DEBUG] handleMarkAllAsGraded CALLED ===');
+    // handleSaveGradesLocally
+    // ─────────────────────────────────────────────────────────────────────────
+    // Saves all current grades in memory locally to IndexedDB as drafts.
+    // Keeps submissions editable in the "Needs Grading" list.
+    const handleSaveGradesLocally = useCallback(async () => {
+        console.log('=== [DEBUG] handleSaveGradesLocally CALLED ===');
+        console.log('[DEBUG] visible needsGrading count:', needsGrading.length);
+        if (needsGrading.length === 0) {
+            console.warn('[DEBUG] No visible submissions to save.');
+            return;
+        }
+        setSaving(true);
+        try {
+            const toSave = [...needsGrading];
+            console.log('[DEBUG] Submissions to save locally:', toSave.map(s => s.submissionId));
+
+            // Flush ALL grade entries to IndexedDB as drafts (isDraft: true)
+            console.log('[DEBUG] Triggering flushSubGrades with isDraft: true...');
+            await flushSubGrades(toSave, true);
+
+            setHasUnsavedChanges(false);
+            setSaveMessage('Grades saved locally.');
+            setTimeout(() => setSaveMessage(null), 3000);
+
+            // Reload submissions to refresh IndexedDB state
+            await loadSubmissions();
+            await loadOfflinePendingSubs();
+        } catch (err) {
+            console.error('[DEBUG] Critical error in handleSaveGradesLocally:', err);
+            setSaveMessage('Failed to save grades locally.');
+        } finally {
+            setSaving(false);
+            console.log('=== [DEBUG] handleSaveGradesLocally COMPLETED ===');
+        }
+    }, [needsGrading, grades, flushSubGrades, loadSubmissions, loadOfflinePendingSubs]);
+
+    // handleUploadGrades
+    // ─────────────────────────────────────────────────────────────────────────
+    // Finalize all current grades in memory and upload to server (online)
+    // or queue for sync (offline).
+    const handleUploadGrades = useCallback(async () => {
+        console.log('=== [DEBUG] handleUploadGrades CALLED ===');
         console.log('[DEBUG] visible needsGrading count:', needsGrading.length);
         if (needsGrading.length === 0) {
             console.warn('[DEBUG] No visible submissions to grade.');
@@ -581,44 +621,36 @@ export default function GradingPage() {
         setSaving(true);
         try {
             const toMark = [...needsGrading];
-            console.log('[DEBUG] Submissions to mark as graded:', toMark.map(s => s.submissionId));
+            console.log('[DEBUG] Submissions to upload grades for:', toMark.map(s => s.submissionId));
 
-            // Flush ALL grade entries (including synthetic keys for skipped questions)
-            console.log('[DEBUG] Triggering flushSubGrades...');
-            await flushSubGrades(toMark);
+            // Flush ALL grade entries as FINALIZED (isDraft: false)
+            console.log('[DEBUG] Triggering flushSubGrades with isDraft: false...');
+            await flushSubGrades(toMark, false);
 
-            console.log('[DEBUG] Moving submissions in React state from needsGrading to gradedPendingSync...');
-            setNeedsGrading([]);
-            setGradedPendingSync(prev => {
-                const existingIds = new Set(prev.map(s => s.submissionId));
-                const fresh = toMark.filter(s => !existingIds.has(s.submissionId));
-                console.log('[DEBUG] Appending fresh graded items to React state:', fresh.map(f => f.submissionId));
-                return [...prev, ...fresh];
-            });
+            setHasUnsavedChanges(false);
 
-            const pending = await getPendingOfflineGrades();
-            console.log('[DEBUG] IndexedDB pending unique graded submissions:', new Set(pending.map(g => g.submissionId)));
-            // Count unique submissions, not individual grade records (1 submission can have many answers)
-            setPendingGradesCount(new Set(pending.map(g => g.submissionId)).size);
-            setSaveMessage('All submissions marked as graded locally.');
-            setTimeout(() => setSaveMessage(null), 3000);
-
-            // Auto-sync if online
-            console.log('[DEBUG] Checking if online to trigger auto-sync:', onlineRef.current);
+            // If online, trigger auto-sync to server immediately.
+            console.log('[DEBUG] Checking if online to trigger upload:', onlineRef.current);
             if (onlineRef.current) {
-                console.log('[DEBUG] Online! Triggering auto-sync to server...');
+                console.log('[DEBUG] Online! Triggering sync to server...');
                 await handleSyncGradedToServer(toMark);
             } else {
-                console.log('[DEBUG] Offline. Auto-sync skipped.');
+                console.log('[DEBUG] Offline. Moved grades to pending sync.');
+                setSaveMessage('Grades finalized and marked as pending sync. They will sync automatically when internet returns.');
+                setTimeout(() => setSaveMessage(null), 5000);
+
+                // Reload lists to move finalized items to the read-only Graded Pending Sync section
+                await loadSubmissions();
+                await loadOfflinePendingSubs();
             }
         } catch (err) {
-            console.error('[DEBUG] Critical error in handleMarkAllAsGraded:', err);
-            setSaveMessage('Failed to mark as graded.');
+            console.error('[DEBUG] Critical error in handleUploadGrades:', err);
+            setSaveMessage('Failed to upload grades.');
         } finally {
             setSaving(false);
-            console.log('=== [DEBUG] handleMarkAllAsGraded COMPLETED ===');
+            console.log('=== [DEBUG] handleUploadGrades COMPLETED ===');
         }
-    }, [needsGrading, grades, flushSubGrades, handleSyncGradedToServer]);
+    }, [needsGrading, grades, flushSubGrades, handleSyncGradedToServer, loadSubmissions, loadOfflinePendingSubs]);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -642,8 +674,7 @@ export default function GradingPage() {
             ...prev,
             [submissionId]: { ...prev[submissionId], [answerId]: clamped }
         }));
-        // We do NOT save to IndexedDB here anymore. Grades only get "saved" and move to
-        // "Graded - Pending Sync" when the user explicitly clicks "Mark All as Graded".
+        setHasUnsavedChanges(true);
     };
 
     // ── Loading / Auth screens ────────────────────────────────────────────────
@@ -828,32 +859,45 @@ export default function GradingPage() {
                             Refresh
                         </button>
                     )}
-                    {/* Button 1 ─ Mark All as Graded (online + offline) */}
+                    {/* Save Grades Button */}
+                    {needsGrading.length > 0 && (
+                        <button
+                            onClick={handleSaveGradesLocally}
+                            disabled={saving || syncing || !hasUnsavedChanges}
+                            className="save-btn flex-btn-icon"
+                            title="Save current grades locally as draft"
+                            style={{ background: 'var(--color-primary)', color: 'white' }}
+                        >
+                            <span className="material-symbols-rounded">{saving ? 'hourglass_empty' : 'save'}</span>
+                            {saving ? 'Saving...' : 'Save Grades'}
+                        </button>
+                    )}
+                    {/* Upload Grades Button */}
                     {needsGrading.length > 0 && (
                         <button
                             onClick={() => {
-                                console.log('[DEBUG] "Mark All as Graded" primary button clicked. needsGrading.length =', needsGrading.length);
-                                setShowMarkAllWarning(true);
+                                console.log('[DEBUG] "Upload Grades" button clicked. needsGrading.length =', needsGrading.length);
+                                setShowSyncWarning(true);
                             }}
                             disabled={saving || syncing}
                             className="save-btn mark-graded-btn flex-btn-icon"
-                            title="Save current grades locally and mark all visible submissions as graded"
+                            title="Finalize and upload grades to server"
                         >
-                            <span className="material-symbols-rounded">{saving ? 'hourglass_empty' : 'check_circle'}</span>
-                            {saving ? 'Saving...' : 'Mark All as Graded'}
+                            <span className="material-symbols-rounded">cloud_upload</span>
+                            Upload Grades
                         </button>
                     )}
-                    {/* Button 2 ─ Sync Graded to Server (online) / Queued indicator (offline) */}
+                    {/* Sync Graded to Server Button (offline-queued finalized items) */}
                     {gradedPendingSync.length > 0 && (
                         <button
                             onClick={() => {
                                 console.log('[DEBUG] "Sync Graded to Server" primary button clicked. gradedPendingSync.length =', gradedPendingSync.length);
-                                if (online) setShowSyncWarning(true);
+                                if (online) handleSyncGradedToServer();
                             }}
                             disabled={saving || syncing || !online}
                             className="save-btn sync-server-btn flex-btn-icon"
                             style={{ opacity: online ? 1 : 0.75 }}
-                            title={online ? 'Push marked-as-graded submissions to the server' : 'Grades are saved locally — will auto-sync when internet returns'}
+                            title={online ? 'Push finalized grades to the server' : 'Grades are finalized and saved locally — will auto-sync when internet returns'}
                         >
                             {syncing ? (
                                 <>
@@ -908,7 +952,7 @@ export default function GradingPage() {
                             <span className="material-symbols-rounded banner-icon info-icon">schedule</span>
                             Needs Grading ({needsGrading.length})
                         </h3>
-                        <p>Grade these submissions, then click <strong>"Mark All as Graded"</strong> to lock them in. They will move to the section below, ready to sync.</p>
+                        <p>Grade these submissions. You can click <strong>"Save Grades"</strong> to save draft progress locally. When ready, click <strong>"Upload Grades"</strong> to finalize and sync them.</p>
                     </div>
                     <GradingTable
                         submissions={needsGrading}
@@ -982,6 +1026,11 @@ export default function GradingPage() {
                                     <tr key={sub.localId}>
                                         <td className="student-name">
                                             {sub.studentFirstName} {sub.studentLastName}
+                                            {sub.selectedLanguage && (
+                                                <span className="student-lang-tag">
+                                                    {sub.selectedLanguage}
+                                                </span>
+                                            )}
                                         </td>
                                         <td>{sub.classGrade}{sub.section}</td>
                                         <td className="school-name">{sub.schoolName || '—'}</td>
@@ -1050,6 +1099,11 @@ export default function GradingPage() {
                                     <tr key={sub.submission_id}>
                                         <td className="student-name">
                                             {sub.student_first_name} {sub.student_last_name}
+                                            {sub.selected_language && (
+                                                <span className="student-lang-tag">
+                                                    {sub.selected_language}
+                                                </span>
+                                            )}
                                         </td>
                                         <td>{sub.class_grade}{sub.section}</td>
                                         <td className="school-name">{sub.school_name || '—'}</td>
@@ -1561,18 +1615,17 @@ export default function GradingPage() {
                 </div>
             )}
 
-            {/* Sync Warning Modal */}
+            {/* Upload Grades Confirmation Modal */}
             {showSyncWarning && (
                 <div className="modal-overlay" onClick={() => setShowSyncWarning(false)}>
                     <div className="modal-wrapper" onClick={(e) => e.stopPropagation()}>
                         <h3 className="modal-title-flex warning-title">
                             <span className="material-symbols-rounded modal-warn-icon">warning</span>
-                            Confirm Sync to Server
+                            Confirm Upload Grades
                         </h3>
                         <p className="modal-desc">
-                            This will push <strong>{gradedPendingSync.length} graded submission{gradedPendingSync.length !== 1 ? 's' : ''}</strong> to the server.
-                            Submissions still in "Needs Grading" will <em>not</em> be affected.
-                            Once synced, marks cannot be changed from this dashboard.
+                            This will finalize and upload grades for <strong>{needsGrading.length} submission{needsGrading.length !== 1 ? 's' : ''}</strong>.
+                            {online ? ' Once uploaded, grades cannot be changed from this dashboard.' : ' You are currently offline. These grades will be locked and queued to sync automatically when you reconnect.'}
                         </p>
                         <div className="modal-actions">
                             <button
@@ -1582,40 +1635,10 @@ export default function GradingPage() {
                                 Cancel
                             </button>
                             <button
-                                onClick={async () => { setShowSyncWarning(false); await handleSyncGradedToServer(); }}
+                                onClick={async () => { setShowSyncWarning(false); await handleUploadGrades(); }}
                                 className="modal-proceed-btn warning-proceed"
                             >
-                                Proceed &amp; Sync
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Mark All as Graded Warning Modal */}
-            {showMarkAllWarning && (
-                <div className="modal-overlay" onClick={() => setShowMarkAllWarning(false)}>
-                    <div className="modal-wrapper" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="modal-title-flex warning-title">
-                            <span className="material-symbols-rounded modal-warn-icon">warning</span>
-                            Confirm Mark as Graded
-                        </h3>
-                        <p className="modal-desc">
-                            Are you sure you want to mark <strong>{needsGrading.length} submission{needsGrading.length !== 1 ? 's' : ''}</strong> as graded?
-                            They will be locked from further edits in this view unless refreshed.
-                        </p>
-                        <div className="modal-actions">
-                            <button
-                                onClick={() => setShowMarkAllWarning(false)}
-                                className="modal-cancel-btn"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={async () => { setShowMarkAllWarning(false); await handleMarkAllAsGraded(); }}
-                                className="modal-proceed-btn success-proceed"
-                            >
-                                Mark as Graded
+                                Confirm &amp; Upload
                             </button>
                         </div>
                     </div>
@@ -1708,6 +1731,11 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
                                             <td className="sticky-col student-cell">
                                                 <div className="student-name">
                                                     {sub.studentFirstName} {sub.studentLastName}
+                                                    {sub.selectedLanguage && (
+                                                        <span className="student-lang-tag">
+                                                            {sub.selectedLanguage}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="student-meta">
                                                     Class {sub.classGrade}{sub.section}
@@ -1848,6 +1876,18 @@ function GradingTable({ submissions, grades, onGradeChange, readOnly = false }: 
                 .grading-table th.sticky-col { background: var(--color-primary-light); }
                 .student-cell { max-width: 250px; }
                 .student-name { font-weight: 600; color: var(--color-primary); font-family: var(--font-sans); }
+                .student-lang-tag {
+                    font-size: 10px;
+                    background: var(--color-primary-light, #eef2f6);
+                    color: var(--color-primary, #154159);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    margin-left: 8px;
+                    font-weight: 600;
+                    vertical-align: middle;
+                    display: inline-block;
+                    border: 1px solid var(--color-border);
+                }
                 .student-meta { font-size: 13px; color: var(--color-text-secondary); margin-top: 4px; font-family: var(--font-sans); }
                 .grade-cell { min-width: 200px; }
                 .grade-input {

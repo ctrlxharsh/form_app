@@ -38,6 +38,7 @@ interface Assessment {
   description: string | null;
   class_grade: number;
   language?: string;
+  languages?: string[];
   group_identifier?: string;
   academic_year?: string;
 }
@@ -231,6 +232,7 @@ export default function HomePage() {
         description: f.formData.description || null,
         class_grade: f.formData.class_grade || 0,
         language: undefined,
+        languages: f.formData.languages || ['English'],
         group_identifier: undefined,
         academic_year: undefined
       }));
@@ -681,30 +683,48 @@ function AssessmentGroupCard({
 }) {
   const [showLanguages, setShowLanguages] = useState(false);
 
-  // Sorting: English first, then others
-  const sortedAssessments = [...group.assessments].sort((a, b) => {
+  // Derive the list of all language variants for this assessment group.
+  const variants: { assessment_id: number; language: string }[] = [];
+  
+  for (const a of group.assessments) {
+    if (a.languages && a.languages.length > 0) {
+      for (const lang of a.languages) {
+        if (!variants.some(v => v.assessment_id === a.assessment_id && v.language === lang)) {
+          variants.push({ assessment_id: a.assessment_id, language: lang });
+        }
+      }
+    } else {
+      const lang = a.language || 'English';
+      if (!variants.some(v => v.assessment_id === a.assessment_id && v.language === lang)) {
+        variants.push({ assessment_id: a.assessment_id, language: lang });
+      }
+    }
+  }
+
+  // Sorting: English first, then others alphabetically
+  const sortedVariants = [...variants].sort((a, b) => {
     if (a.language === 'English') return -1;
     if (b.language === 'English') return 1;
-    return (a.language || '').localeCompare(b.language || '');
+    return a.language.localeCompare(b.language);
   });
 
-  // If only 1 assessment, show direct link
-  if (sortedAssessments.length === 1) {
-    const assessment = sortedAssessments[0];
-    const isCached = cachedFormIds.has(assessment.assessment_id);
+  // If only 1 language variant exists in the entire group, show direct link
+  if (sortedVariants.length === 1) {
+    const variant = sortedVariants[0];
+    const isCached = cachedFormIds.has(variant.assessment_id);
     const isDisabled = isOffline && !isCached;
-    const lang = assessment.language || 'English';
+    const lang = variant.language;
 
     return (
       <Link
-        href={isDisabled ? '#' : `/forms/${assessment.assessment_id}`}
+        href={isDisabled ? '#' : `/forms/${variant.assessment_id}?lang=${lang}`}
         className={`assessment-card ${isDisabled ? 'disabled' : ''}`}
         aria-disabled={isDisabled}
       >
         <div className="card-header">
           <span className="card-class">Class {group.class_grade}</span>
           {isCached && <span className="card-cached" style={{ display: 'inline-flex', alignItems: 'center' }}><span className="material-symbols-rounded" style={{ fontSize: '16px', color: 'var(--color-success)' }}>save</span></span>}
-          {assessment.language && assessment.language !== 'English' && (
+          {lang && lang !== 'English' && (
             <span
               className="card-lang-badge"
               style={{
@@ -717,7 +737,7 @@ function AssessmentGroupCard({
                 verticalAlign: 'middle'
               }}
             >
-              {assessment.language}
+              {lang}
             </span>
           )}
         </div>
@@ -757,7 +777,7 @@ function AssessmentGroupCard({
             color: 'var(--color-text-secondary)'
           }}
         >
-          {group.assessments.length} Languages
+          {sortedVariants.length} Languages
         </span>
       </div>
       <h3 className="card-title">{group.title}</h3>
@@ -795,13 +815,13 @@ function AssessmentGroupCard({
               marginBottom: '16px'
             }}
           >
-            {sortedAssessments.map(a => {
-              const isCached = cachedFormIds.has(a.assessment_id);
+            {sortedVariants.map(v => {
+              const isCached = cachedFormIds.has(v.assessment_id);
               const isDisabled = isOffline && !isCached;
               return (
                 <Link
-                  key={a.assessment_id}
-                  href={isDisabled ? '#' : `/forms/${a.assessment_id}`}
+                  key={`${v.assessment_id}-${v.language}`}
+                  href={isDisabled ? '#' : `/forms/${v.assessment_id}?lang=${v.language}`}
                   className={`lang-btn ${isDisabled ? 'disabled' : ''}`}
                   style={{
                     display: 'flex',
@@ -820,7 +840,7 @@ function AssessmentGroupCard({
                     transition: 'all 0.15s'
                   }}
                 >
-                  <span>{a.language || 'English'}</span>
+                  <span>{v.language}</span>
                   {isCached && (
                     <span className="material-symbols-rounded" style={{ fontSize: '14px', color: 'var(--color-success)' }}>
                       save

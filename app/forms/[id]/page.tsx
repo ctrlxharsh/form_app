@@ -7,8 +7,8 @@
 
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, use, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FormRenderer } from '@/components/FormRenderer';
 import { OfflineStatus } from '@/components/OfflineStatus';
 import { getCachedForm, type FormData } from '@/lib/db';
@@ -18,9 +18,13 @@ interface PageProps {
     params: Promise<{ id: string }>;
 }
 
-export default function FormPage({ params }: PageProps) {
+function FormPageContent({ params }: PageProps) {
     const { id } = use(params);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const selectedLanguage = searchParams ? (searchParams.get('lang') || 'English') : 'English';
+
+    const [rawFormData, setRawFormData] = useState<FormData | null>(null);
     const [formData, setFormData] = useState<FormData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -39,6 +43,48 @@ export default function FormPage({ params }: PageProps) {
             triggerSync().catch(console.error);
         }
     }, []);
+
+    // Apply translations whenever rawFormData or selectedLanguage changes
+    useEffect(() => {
+        if (!rawFormData) {
+            setFormData(null);
+            return;
+        }
+
+        if (!selectedLanguage || selectedLanguage === 'English') {
+            setFormData(rawFormData);
+            return;
+        }
+
+        const translated: FormData = {
+            ...rawFormData,
+            sections: rawFormData.sections.map((section) => {
+                const secTrans = section.translations?.[selectedLanguage];
+                return {
+                    ...section,
+                    section_title: secTrans?.section_title || section.section_title,
+                    section_instructions: secTrans?.section_instructions !== undefined 
+                        ? secTrans.section_instructions 
+                        : section.section_instructions,
+                    questions: section.questions.map((q) => {
+                        const qTrans = q.translations?.[selectedLanguage];
+                        return {
+                            ...q,
+                            question_text: qTrans?.question_text || q.question_text,
+                            options: q.options.map((opt) => {
+                                const optTrans = opt.translations?.[selectedLanguage];
+                                return {
+                                    ...opt,
+                                    option_text: optTrans?.option_text || opt.option_text
+                                };
+                            })
+                        };
+                    })
+                };
+            })
+        };
+        setFormData(translated);
+    }, [rawFormData, selectedLanguage]);
 
     // Fetch form data — cache-first strategy
     useEffect(() => {
@@ -59,7 +105,7 @@ export default function FormPage({ params }: PageProps) {
 
                 if (cached) {
                     // Show cached form instantly
-                    setFormData(cached.formData);
+                    setRawFormData(cached.formData);
                     setLoading(false);
 
                     // Background refresh: fetch from API if online, update cache silently
@@ -69,7 +115,7 @@ export default function FormPage({ params }: PageProps) {
                             const response = await fetch(`/api/forms/${assessmentId}`);
                             if (response.ok) {
                                 const data = await response.json();
-                                setFormData(data);
+                                setRawFormData(data);
                                 // Update cache in background
                                 const { cacheForm } = await import('@/lib/db');
                                 cacheForm(data).catch(console.error);
@@ -89,7 +135,7 @@ export default function FormPage({ params }: PageProps) {
 
                     if (response.ok) {
                         const data = await response.json();
-                        setFormData(data);
+                        setRawFormData(data);
                     } else if (response.status === 404) {
                         setError('Form not found');
                     } else {
@@ -129,7 +175,6 @@ export default function FormPage({ params }: PageProps) {
             router.push('/');
         }
     };
-
 
     // Loading state
     if (loading) {
@@ -215,8 +260,24 @@ export default function FormPage({ params }: PageProps) {
             <OfflineStatus />
             <FormRenderer
                 formData={formData}
+                selectedLanguage={selectedLanguage}
                 onComplete={handleComplete}
             />
         </div>
+    );
+}
+
+export default function FormPage(props: PageProps) {
+    return (
+        <Suspense fallback={
+            <div className="page-container">
+                <div className="loading-container">
+                    <div className="loading-spinner" />
+                    <p>Loading form...</p>
+                </div>
+            </div>
+        }>
+            <FormPageContent {...props} />
+        </Suspense>
     );
 }

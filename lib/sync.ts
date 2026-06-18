@@ -234,12 +234,15 @@ async function performSync(): Promise<void> {
                     await syncSubmission(submission);
                 } else {
                     // Check if teacher has graded all subjective locally
+                    // Check if teacher has graded all subjective locally and marked as finalized (non-draft)
                     const localGrades = await db.offlineGrades
                         .where('submissionId')
                         .equals(-submission.localId!)
                         .toArray();
 
-                    if (localGrades.length > 0) {
+                    const finalizedGrades = localGrades.filter(g => !g.isDraft);
+
+                    if (finalizedGrades.length > 0) {
                         // Teacher pre-graded offline — sync with grades
                         await syncSubmission(submission);
                     } else {
@@ -471,7 +474,12 @@ async function syncSubmission(submission: OfflineSubmission): Promise<void> {
         const updatedAnswers = await uploadPendingImages(submission);
 
         // Attach offline grades if present (stored with negative IDs for offline submissions)
-        const offlineGrades = await db.offlineGrades.where('submissionId').equals(-localId).toArray();
+        // Only attach finalized grades (non-drafts)
+        const offlineGrades = await db.offlineGrades
+            .where('submissionId')
+            .equals(-localId)
+            .filter(g => !g.isDraft)
+            .toArray();
         for (const grade of offlineGrades) {
             const questionId = -grade.answerId; // answerId is stored as -questionId for offline subs
             // ── KEY FIX: create slot even for skipped (unanswered) questions ──────

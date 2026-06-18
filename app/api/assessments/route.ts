@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
                         JOIN access_role_assessments ara ON a.assessment_id = ara.assessment_id
                         JOIN user_access_roles uar ON ara.access_role_id = uar.access_role_id
                         WHERE uar.user_id = ${parsedUserId}
-                        AND a.assessment_type = 'survey'
+                        AND a.intervention = 'survey'
 
                         UNION
 
@@ -58,19 +58,21 @@ export async function GET(request: NextRequest) {
                         SELECT a.assessment_id
                         FROM assessments a
                         CROSS JOIN teacher_interventions ti
-                        WHERE a.assessment_type IN ('prototype', 'propagate', 'both')
+                        WHERE a.intervention IN ('prototype', 'propagate', 'both')
                         AND (
-                            (a.assessment_type = 'prototype' AND ti.intervention = 'Prototype') OR
-                            (a.assessment_type = 'propagate' AND ti.intervention = 'Propagate') OR
-                            (a.assessment_type = 'both' AND ti.intervention IN ('Prototype', 'Propagate'))
+                            (a.intervention = 'prototype' AND ti.intervention = 'Prototype') OR
+                            (a.intervention = 'propagate' AND ti.intervention = 'Propagate') OR
+                            (a.intervention = 'both' AND ti.intervention IN ('Prototype', 'Propagate'))
                         )
                     )
-                    SELECT DISTINCT a.assessment_id, a.title, a.description, 
-                           a.class_grade, a.language, a.group_identifier, a.academic_year, a.assessment_type
+                    SELECT a.assessment_id, a.title, a.description, 
+                           a.class_grade, ARRAY_AGG(DISTINCT al.language) as languages, a.group_identifier, a.academic_year, a.intervention as assessment_type
                     FROM assessments a
+                    JOIN public.assessment_languages al ON a.assessment_id = al.assessment_id
                     JOIN accessible_assessments aa ON a.assessment_id = aa.assessment_id
-                    WHERE a.status = 'published' AND a.is_active = true
+                    WHERE a.status = 'published'
                     ${parsedClassGrade ? sql`AND a.class_grade = ${parsedClassGrade}` : sql``}
+                    GROUP BY a.assessment_id, a.title, a.description, a.class_grade, a.group_identifier, a.academic_year, a.intervention
                     ORDER BY a.class_grade, a.title
                 `;
 
@@ -97,7 +99,7 @@ export async function GET(request: NextRequest) {
                         JOIN access_role_assessments ara ON a.assessment_id = ara.assessment_id
                         JOIN user_access_roles uar ON ara.access_role_id = uar.access_role_id
                         WHERE uar.user_id IN (SELECT teacher_id FROM my_teachers)
-                        AND a.assessment_type = 'survey'
+                        AND a.intervention = 'survey'
 
                         UNION
 
@@ -105,19 +107,21 @@ export async function GET(request: NextRequest) {
                         SELECT a.assessment_id
                         FROM assessments a
                         JOIN teacher_interventions ti ON 1=1 -- Logic handled in WHERE
-                        WHERE a.assessment_type IN ('prototype', 'propagate', 'both')
+                        WHERE a.intervention IN ('prototype', 'propagate', 'both')
                         AND (
-                            (a.assessment_type = 'prototype' AND ti.intervention = 'Prototype') OR
-                            (a.assessment_type = 'propagate' AND ti.intervention = 'Propagate') OR
-                            (a.assessment_type = 'both' AND ti.intervention IN ('Prototype', 'Propagate'))
+                            (a.intervention = 'prototype' AND ti.intervention = 'Prototype') OR
+                            (a.intervention = 'propagate' AND ti.intervention = 'Propagate') OR
+                            (a.intervention = 'both' AND ti.intervention IN ('Prototype', 'Propagate'))
                         )
                     )
-                    SELECT DISTINCT a.assessment_id, a.title, a.description, 
-                           a.class_grade, a.language, a.group_identifier, a.academic_year, a.assessment_type
+                    SELECT a.assessment_id, a.title, a.description, 
+                           a.class_grade, ARRAY_AGG(DISTINCT al.language) as languages, a.group_identifier, a.academic_year, a.intervention as assessment_type
                     FROM assessments a
+                    JOIN public.assessment_languages al ON a.assessment_id = al.assessment_id
                     JOIN accessible_assessments aa ON a.assessment_id = aa.assessment_id
-                    WHERE a.status = 'published' AND a.is_active = true
+                    WHERE a.status = 'published'
                     ${parsedClassGrade ? sql`AND a.class_grade = ${parsedClassGrade}` : sql``}
+                    GROUP BY a.assessment_id, a.title, a.description, a.class_grade, a.group_identifier, a.academic_year, a.intervention
                     ORDER BY a.class_grade, a.title
                 `;
             }
@@ -127,11 +131,13 @@ export async function GET(request: NextRequest) {
         } else {
             // M&E/Lead or no user - show all published assessments
             assessments = await sql`
-                SELECT assessment_id, title, description, class_grade, language, 
-                       group_identifier, academic_year, assessment_type
-                FROM assessments
-                WHERE status = 'published' AND is_active = true
+                SELECT a.assessment_id, a.title, a.description, a.class_grade, ARRAY_AGG(DISTINCT al.language) as languages, 
+                       a.group_identifier, a.academic_year, a.intervention as assessment_type
+                FROM assessments a
+                JOIN public.assessment_languages al ON a.assessment_id = al.assessment_id
+                WHERE a.status = 'published'
                 ${parsedClassGrade ? sql`AND class_grade = ${parsedClassGrade}` : sql``}
+                GROUP BY a.assessment_id, a.title, a.description, a.class_grade, a.group_identifier, a.academic_year, a.intervention
                 ORDER BY class_grade, title
             `;
         }
