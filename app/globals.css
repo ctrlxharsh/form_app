@@ -910,6 +910,7 @@ body {
 
 .section-instructions p {
   margin: 0;
+  white-space: pre-wrap;
 }
 
 /* ============ QUESTIONS ============ */
@@ -953,7 +954,7 @@ body {
 .question-text {
   flex: 1;
   font-size: 14px;
-  white-space: pre-line;
+  white-space: pre-wrap;
 }
 
 .question-marks {

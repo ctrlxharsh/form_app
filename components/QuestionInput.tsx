@@ -41,7 +41,7 @@ export function QuestionInput({ question, value, onChange, questionNumber }: Que
             {/* Question Header */}
             <div className="question-header">
                 <span className="question-number">Q{questionNumber}.</span>
-                <span className="question-text">{question.question_text}{requiredMarker}</span>
+                <span className="question-text" style={{ whiteSpace: 'pre-wrap' }}>{question.question_text}{requiredMarker}</span>
                 {marks && <span className="question-marks">{marks}</span>}
             </div>
 
@@ -230,7 +230,7 @@ function MCQInput({
                             />
                         )}
                         {opt.option_text && (
-                            <span className="option-text">{opt.option_text}</span>
+                            <span className="option-text" style={{ whiteSpace: 'pre-wrap' }}>{opt.option_text}</span>
                         )}
                     </label>
                 ))}
@@ -294,7 +294,7 @@ function MultipleSelectInput({
                             />
                         )}
                         {opt.option_text && (
-                            <span className="option-text">{opt.option_text}</span>
+                            <span className="option-text" style={{ whiteSpace: 'pre-wrap' }}>{opt.option_text}</span>
                         )}
                     </label>
                 ))}
@@ -464,7 +464,7 @@ function RankingInput({
                     return (
                         <div key={opt.option_id} className="ranking-option">
                             <div className="ranking-content">
-                                <span className="ranking-text">{opt.option_text}</span>
+                                <span className="ranking-text" style={{ whiteSpace: 'pre-wrap' }}>{opt.option_text}</span>
                                 {opt.option_image_url && (
                                     <OfflineImage 
                                         src={opt.option_image_url} 

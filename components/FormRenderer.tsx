@@ -474,7 +474,7 @@ export function FormRenderer({ formData, selectedLanguage, onComplete }: FormRen
 
                 {currentSection.section_instructions && (
                     <div className="section-instructions">
-                        <p>{currentSection.section_instructions}</p>
+                        <p style={{ whiteSpace: 'pre-wrap' }}>{currentSection.section_instructions}</p>
                     </div>
                 )}
 
