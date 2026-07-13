@@ -35,6 +35,54 @@ interface AnswerData {
     marksAwarded?: number;
 }
 
+function getQuestionMaxMarks(question: any): number {
+    const qType = question.question_type;
+    const qMarks = question.marks ? parseFloat(String(question.marks)) : 0;
+
+    if (qType === 'mcq') {
+        const correctOption = question.options?.find((o: any) => o.is_correct);
+        const correctOptMarks = correctOption?.marks ? parseFloat(String(correctOption.marks)) : 0;
+        if (correctOptMarks > 0) return correctOptMarks;
+        
+        let maxOptMarks = 0;
+        if (question.options) {
+            for (const opt of question.options) {
+                const optMarks = opt.marks ? parseFloat(String(opt.marks)) : 0;
+                if (optMarks > maxOptMarks) {
+                    maxOptMarks = optMarks;
+                }
+            }
+        }
+        return maxOptMarks || qMarks || 0;
+    } 
+    else if (qType === 'multiple_select') {
+        let correctSum = 0;
+        if (question.options) {
+            for (const opt of question.options) {
+                if (opt.is_correct) {
+                    correctSum += opt.marks ? parseFloat(String(opt.marks)) : 0;
+                }
+            }
+        }
+        return correctSum || qMarks || 0;
+    } 
+    else if (qType === 'ranking') {
+        let maxOptMarks = 0;
+        if (question.options) {
+            for (const opt of question.options) {
+                const optMarks = opt.marks ? parseFloat(String(opt.marks)) : 0;
+                if (optMarks > maxOptMarks) {
+                    maxOptMarks = optMarks;
+                }
+            }
+        }
+        return maxOptMarks || qMarks || 0;
+    } 
+    else {
+        return qMarks;
+    }
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body: SubmitRequest = await request.json();
@@ -123,7 +171,20 @@ export async function POST(request: NextRequest) {
 
         // Fetch full assessment schema to get correct answers and marks
         const assessmentSchema = await getFullAssessment(assessmentId);
-        let calculatedTotalMarks = assessmentSchema?.total_marks ? parseFloat(String(assessmentSchema.total_marks)) : 0;
+        let calculatedTotalMarks = 0;
+        if (assessmentSchema) {
+            // Calculate total possible marks based on question types and option marks
+            assessmentSchema.sections.forEach((s: any) =>
+                s.questions.forEach((q: any) => {
+                    calculatedTotalMarks += getQuestionMaxMarks(q);
+                })
+            );
+            
+            // Fallback to the total_marks column if questions sum to 0
+            if (calculatedTotalMarks === 0 && assessmentSchema.total_marks) {
+                calculatedTotalMarks = parseFloat(String(assessmentSchema.total_marks));
+            }
+        }
         let hasSubjectiveQuestions = false;
         const subjectiveQuestionIds: number[] = [];
         const questionMap = new Map<number, any>();
