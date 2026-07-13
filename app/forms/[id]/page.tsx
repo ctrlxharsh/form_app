@@ -167,13 +167,7 @@ function FormPageContent({ params }: PageProps) {
 
     // Handle submitting another assessment
     const handleSubmitAnother = () => {
-        // Use hard navigation when offline to trigger service worker
-        // Client-side routing doesn't work offline as it tries to fetch from network
-        if (!isOnline()) {
-            window.location.href = '/';
-        } else {
-            router.push('/');
-        }
+        router.push('/');
     };
 
     // Loading state

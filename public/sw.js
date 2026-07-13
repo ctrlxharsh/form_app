@@ -63,12 +63,26 @@ self.addEventListener('fetch', (event) => {
                     });
                     return response;
                 })
-                .catch(() => {
+                .catch(async () => {
                     // Offline - try cache, then fallback to home
-                    return caches.match(request).then((cached) => {
-                        if (cached) return cached;
-                        return caches.match('/');
-                    });
+                    const cached = await caches.match(request);
+                    if (cached) return cached;
+                    const home = await caches.match('/');
+                    if (home) return home;
+                    
+                    // Safe fallback HTML page if cache is empty/stale
+                    return new Response(
+                        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Offline</title>' +
+                        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+                        '<style>body{font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:50px;color:#333;background:#f9f9f9}' +
+                        'h1{color:#ff4d4d}a{color:#0066cc;text-decoration:none}button{padding:10px 20px;background:#0066cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:16px;margin-top:20px}</style></head>' +
+                        '<body><h1>You are Offline</h1><p>This assessment portal page is not cached for offline use yet.</p>' +
+                        '<button onclick="window.location.href=\'/\'">Go to Dashboard</button></body></html>',
+                        {
+                            status: 503,
+                            headers: { 'Content-Type': 'text/html' }
+                        }
+                    );
                 })
         );
         return;
