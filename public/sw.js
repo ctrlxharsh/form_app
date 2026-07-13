@@ -64,10 +64,10 @@ self.addEventListener('fetch', (event) => {
                     return response;
                 })
                 .catch(async () => {
-                    // Offline - try cache, then fallback to home
-                    const cached = await caches.match(request);
+                    // Offline - try cache, then fallback to home (ignoring Vary headers for Next.js)
+                    const cached = await caches.match(request, { ignoreVary: true });
                     if (cached) return cached;
-                    const home = await caches.match('/');
+                    const home = await caches.match('/', { ignoreVary: true });
                     if (home) return home;
                     
                     // Safe fallback HTML page if cache is empty/stale

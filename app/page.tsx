@@ -97,6 +97,26 @@ export default function HomePage() {
     }
   }, [online, cachedForms, router]);
 
+  // Programmatically pre-cache main app shell HTML and RSC payloads when online
+  useEffect(() => {
+    if (online) {
+      const shellRoutes = ['/', '/login', '/grading'];
+      shellRoutes.forEach(url => {
+        try {
+          // Fetch HTML document
+          fetch(url, { priority: 'low' } as any).catch(() => {});
+          // Fetch RSC payload
+          fetch(url, {
+            headers: { 'RSC': '1' },
+            priority: 'low'
+          } as any).catch(() => {});
+        } catch (e) {
+          console.warn('[Pre-Cache] Failed to pre-cache shell path:', url, e);
+        }
+      });
+    }
+  }, [online]);
+
   // Load cached forms
   const loadCachedForms = useCallback(async () => {
     const forms = await getAllCachedForms();
