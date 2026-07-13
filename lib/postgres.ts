@@ -70,7 +70,29 @@ export async function getFullAssessment(assessmentId: number) {
       ORDER BY qo.order_index
     `,
     sql`
-      SELECT language FROM public.assessment_languages WHERE assessment_id = ${assessmentId}
+      SELECT language FROM public.assessment_languages al 
+      WHERE al.assessment_id = ${assessmentId}
+      AND (
+        al.language = 'English'
+        OR EXISTS (
+          SELECT 1 FROM public.section_translations st
+          JOIN assessment_sections s ON st.section_id = s.section_id
+          WHERE s.assessment_id = al.assessment_id AND st.language = al.language
+        )
+        OR EXISTS (
+          SELECT 1 FROM public.question_translations qt
+          JOIN questions q ON qt.question_id = q.question_id
+          JOIN assessment_sections s ON q.section_id = s.section_id
+          WHERE s.assessment_id = al.assessment_id AND qt.language = al.language
+        )
+        OR EXISTS (
+          SELECT 1 FROM public.option_translations ot
+          JOIN question_options qo ON ot.option_id = qo.option_id
+          JOIN questions q ON qo.question_id = q.question_id
+          JOIN assessment_sections s ON q.section_id = s.section_id
+          WHERE s.assessment_id = al.assessment_id AND ot.language = al.language
+        )
+      )
     `,
     sql`
       SELECT section_id, language, section_title, section_instructions

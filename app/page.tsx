@@ -65,17 +65,35 @@ export default function HomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [teacherSession, setTeacherSession] = useState<TeacherSession | null>(null);
 
-  // Prefetch language variants for all cached forms when online
+  // Prefetch and pre-cache HTML and RSC payloads for all cached forms when online
   useEffect(() => {
     if (online && cachedForms.length > 0) {
-      for (const form of cachedForms) {
-        const languages = form.formData.languages && form.formData.languages.length > 0
-          ? form.formData.languages
-          : ['English'];
-        for (const lang of languages) {
-          router.prefetch(`/forms/${form.formId}?lang=${lang}`);
+      const preCache = async () => {
+        for (const form of cachedForms) {
+          const languages = form.formData.languages && form.formData.languages.length > 0
+            ? form.formData.languages
+            : ['English'];
+          for (const lang of languages) {
+            const url = `/forms/${form.formId}?lang=${lang}`;
+            try {
+              // 1. Prefetch via Next.js router
+              router.prefetch(url);
+
+              // 2. Programmatically fetch the HTML document to ensure it's in the Service Worker cache
+              fetch(url, { priority: 'low' } as any).catch(() => {});
+
+              // 3. Programmatically fetch the RSC payload to ensure it's in the Service Worker cache
+              fetch(url, {
+                headers: { 'RSC': '1' },
+                priority: 'low'
+              } as any).catch(() => {});
+            } catch (e) {
+              console.warn('[Pre-Cache] Failed to pre-cache page assets:', url, e);
+            }
+          }
         }
-      }
+      };
+      preCache();
     }
   }, [online, cachedForms, router]);
 

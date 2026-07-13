@@ -68,7 +68,29 @@ export async function GET(request: NextRequest) {
                     SELECT a.assessment_id, a.title, a.description, 
                            a.class_grade, ARRAY_AGG(DISTINCT al.language) as languages, a.group_identifier, a.academic_year, a.intervention as assessment_type
                     FROM assessments a
-                    JOIN public.assessment_languages al ON a.assessment_id = al.assessment_id
+                    JOIN (
+                        SELECT DISTINCT al.assessment_id, al.language
+                        FROM public.assessment_languages al
+                        WHERE al.language = 'English'
+                        OR EXISTS (
+                            SELECT 1 FROM public.section_translations st
+                            JOIN assessment_sections s ON st.section_id = s.section_id
+                            WHERE s.assessment_id = al.assessment_id AND st.language = al.language
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM public.question_translations qt
+                            JOIN questions q ON qt.question_id = q.question_id
+                            JOIN assessment_sections s ON q.section_id = s.section_id
+                            WHERE s.assessment_id = al.assessment_id AND qt.language = al.language
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM public.option_translations ot
+                            JOIN question_options qo ON ot.option_id = qo.option_id
+                            JOIN questions q ON qo.question_id = q.question_id
+                            JOIN assessment_sections s ON q.section_id = s.section_id
+                            WHERE s.assessment_id = al.assessment_id AND ot.language = al.language
+                        )
+                    ) al ON a.assessment_id = al.assessment_id
                     JOIN accessible_assessments aa ON a.assessment_id = aa.assessment_id
                     WHERE a.status = 'published'
                     ${parsedClassGrade ? sql`AND a.class_grade = ${parsedClassGrade}` : sql``}
@@ -117,7 +139,29 @@ export async function GET(request: NextRequest) {
                     SELECT a.assessment_id, a.title, a.description, 
                            a.class_grade, ARRAY_AGG(DISTINCT al.language) as languages, a.group_identifier, a.academic_year, a.intervention as assessment_type
                     FROM assessments a
-                    JOIN public.assessment_languages al ON a.assessment_id = al.assessment_id
+                    JOIN (
+                        SELECT DISTINCT al.assessment_id, al.language
+                        FROM public.assessment_languages al
+                        WHERE al.language = 'English'
+                        OR EXISTS (
+                            SELECT 1 FROM public.section_translations st
+                            JOIN assessment_sections s ON st.section_id = s.section_id
+                            WHERE s.assessment_id = al.assessment_id AND st.language = al.language
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM public.question_translations qt
+                            JOIN questions q ON qt.question_id = q.question_id
+                            JOIN assessment_sections s ON q.section_id = s.section_id
+                            WHERE s.assessment_id = al.assessment_id AND qt.language = al.language
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM public.option_translations ot
+                            JOIN question_options qo ON ot.option_id = qo.option_id
+                            JOIN questions q ON qo.question_id = q.question_id
+                            JOIN assessment_sections s ON q.section_id = s.section_id
+                            WHERE s.assessment_id = al.assessment_id AND ot.language = al.language
+                        )
+                    ) al ON a.assessment_id = al.assessment_id
                     JOIN accessible_assessments aa ON a.assessment_id = aa.assessment_id
                     WHERE a.status = 'published'
                     ${parsedClassGrade ? sql`AND a.class_grade = ${parsedClassGrade}` : sql``}
@@ -134,7 +178,29 @@ export async function GET(request: NextRequest) {
                 SELECT a.assessment_id, a.title, a.description, a.class_grade, ARRAY_AGG(DISTINCT al.language) as languages, 
                        a.group_identifier, a.academic_year, a.intervention as assessment_type
                 FROM assessments a
-                JOIN public.assessment_languages al ON a.assessment_id = al.assessment_id
+                JOIN (
+                    SELECT DISTINCT al.assessment_id, al.language
+                    FROM public.assessment_languages al
+                    WHERE al.language = 'English'
+                    OR EXISTS (
+                        SELECT 1 FROM public.section_translations st
+                        JOIN assessment_sections s ON st.section_id = s.section_id
+                        WHERE s.assessment_id = al.assessment_id AND st.language = al.language
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM public.question_translations qt
+                        JOIN questions q ON qt.question_id = q.question_id
+                        JOIN assessment_sections s ON q.section_id = s.section_id
+                        WHERE s.assessment_id = al.assessment_id AND qt.language = al.language
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM public.option_translations ot
+                        JOIN question_options qo ON ot.option_id = qo.option_id
+                        JOIN questions q ON qo.question_id = q.question_id
+                        JOIN assessment_sections s ON q.section_id = s.section_id
+                        WHERE s.assessment_id = al.assessment_id AND ot.language = al.language
+                    )
+                ) al ON a.assessment_id = al.assessment_id
                 WHERE a.status = 'published'
                 ${parsedClassGrade ? sql`AND class_grade = ${parsedClassGrade}` : sql``}
                 GROUP BY a.assessment_id, a.title, a.description, a.class_grade, a.group_identifier, a.academic_year, a.intervention
