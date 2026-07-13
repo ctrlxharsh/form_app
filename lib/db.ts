@@ -483,6 +483,23 @@ export async function cacheForm(formData: FormData): Promise<void> {
     });
 
     await Promise.all(fetchPromises);
+
+    // 4. Prefetch and cache Next.js page HTML and RSC payloads for all languages
+    const languages = formData.languages && formData.languages.length > 0
+        ? formData.languages
+        : ['English'];
+
+    for (const lang of languages) {
+        const pageUrl = `/forms/${formData.assessment_id}?lang=${lang}`;
+        // Fetch the HTML document
+        fetch(pageUrl).catch((err) => 
+            console.warn(`[Cache] Failed to prefetch page HTML for ${lang}:`, err)
+        );
+        // Fetch the RSC payload using _rsc query param (standard Next.js mechanism)
+        fetch(`${pageUrl}&_rsc=1`).catch((err) => 
+            console.warn(`[Cache] Failed to prefetch page RSC for ${lang}:`, err)
+        );
+    }
 }
 
 export async function getCachedForm(formId: number): Promise<CachedForm | undefined> {

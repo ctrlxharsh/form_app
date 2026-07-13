@@ -57,6 +57,28 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Class grade must be between 4 and 10' }, { status: 400 });
         }
 
+        // Validate submittedByTeacher exists in users table to prevent FK violations
+        let validTeacherId: number | null = null;
+        if (submittedByTeacher) {
+            const teacherExists = await sql`
+                SELECT 1 FROM users WHERE user_id = ${parseInt(String(submittedByTeacher), 10)} AND is_active = true
+            `;
+            if (teacherExists.length > 0) {
+                validTeacherId = parseInt(String(submittedByTeacher), 10);
+            }
+        }
+
+        // Validate studentId exists in students table to prevent FK violations
+        let validStudentId: number | null = null;
+        if (studentId) {
+            const studentExists = await sql`
+                SELECT 1 FROM students WHERE student_id = ${parseInt(String(studentId), 10)}
+            `;
+            if (studentExists.length > 0) {
+                validStudentId = parseInt(String(studentId), 10);
+            }
+        }
+
         // Check for duplicate submission across all language variants (same group_identifier)
         const existing = await sql`
             SELECT 1 FROM submissions 
@@ -71,7 +93,7 @@ export async function POST(request: NextRequest) {
                 WHERE a1.assessment_id = ${assessmentId}
             )
             AND (
-                (student_id IS NOT NULL AND student_id = ${studentId || null})
+                (student_id IS NOT NULL AND student_id = ${validStudentId})
                 OR 
                 (LOWER(TRIM(student_first_name)) = LOWER(TRIM(${studentFirstName})) 
                  AND LOWER(TRIM(student_last_name)) = LOWER(TRIM(${studentLastName})))
@@ -104,10 +126,10 @@ export async function POST(request: NextRequest) {
         let calculatedTotalMarks = assessmentSchema?.total_marks ? parseFloat(String(assessmentSchema.total_marks)) : 0;
         let hasSubjectiveQuestions = false;
         const subjectiveQuestionIds: number[] = [];
+        const questionMap = new Map<number, any>();
 
         if (assessmentSchema) {
             // Build question map for easy lookup
-            const questionMap = new Map<number, any>();
             assessmentSchema.sections.forEach((s: any) =>
                 s.questions.forEach((q: any) => {
                     questionMap.set(q.question_id, q);
@@ -229,30 +251,35 @@ export async function POST(request: NextRequest) {
             selectedLanguage,
             geolocation,
             ipAddress,
-            submittedByTeacher || null,
+            validTeacherId,
             marksObtained,
             calculatedTotalMarks,
             clientSubmissionId || null, // Pass the client ID for Upsert
             submissionStatus, // 'graded' for objective-only, 'pending' for subjective
             deviceInfo || null, // Pass device info securely
-            studentId || null
+            validStudentId
         );
 
         const submissionId = submissionResult.submission_id;
 
         // Save all answers in bulk and collect IDs
-        const answersList = Object.entries(answers).map(([questionIdStr, answerData]) => {
-            const questionId = parseInt(questionIdStr, 10);
-            return {
-                submissionId,
-                questionId,
-                answerText: answerData.text ?? null,
-                answerImageUrl: answerData.imageUrl ?? null,
-                selectedOptions: answerData.selectedOptions ?? null,
-                rankingOrder: answerData.rankingOrder ?? null,
-                marksAwarded: answerData.marksAwarded ?? null
-            };
-        });
+        const answersList = Object.entries(answers)
+            .map(([questionIdStr, answerData]) => {
+                const questionId = parseInt(questionIdStr, 10);
+                return {
+                    submissionId,
+                    questionId,
+                    answerText: answerData.text ?? null,
+                    answerImageUrl: answerData.imageUrl ?? null,
+                    selectedOptions: answerData.selectedOptions ?? null,
+                    rankingOrder: answerData.rankingOrder ?? null,
+                    marksAwarded: answerData.marksAwarded ?? null
+                };
+            })
+            .filter(answer => {
+                // Only save answers for questions that exist in the assessment schema
+                return questionMap.has(answer.questionId);
+            });
 
         const insertedAnswers = await saveAnswers(answersList);
         const answerIds: Record<number, number> = {};

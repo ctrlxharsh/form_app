@@ -9,6 +9,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { QuestionInput, type AnswerValue } from './QuestionInput';
 import { StudentDetailsForm, type StudentDetails, isDropoutOrAlumni } from './StudentDetailsForm';
 import { deviceType, osName, osVersion, browserName, browserVersion, mobileVendor, mobileModel, engineName, getUA } from "react-device-detect";
@@ -24,13 +25,15 @@ import { isOnline, checkActualConnectivity } from '@/lib/sync';
 
 interface FormRendererProps {
     formData: FormData;
+    rawFormData: FormData;
     selectedLanguage: string;
     onComplete: (submissionId: number | string) => void;
 }
 
 type Step = 'student-details' | 'sections' | 'confirm' | 'complete';
 
-export function FormRenderer({ formData, selectedLanguage, onComplete }: FormRendererProps) {
+export function FormRenderer({ formData, rawFormData, selectedLanguage, onComplete }: FormRendererProps) {
+    const router = useRouter();
     const [step, setStep] = useState<Step>('student-details');
     const [studentDetails, setStudentDetails] = useState<StudentDetails | null>(null);
     const [answers, setAnswers] = useState<Record<number, AnswerValue>>({});
@@ -77,8 +80,15 @@ export function FormRenderer({ formData, selectedLanguage, onComplete }: FormRen
 
     // Save form for offline use
     const handleSaveForOffline = async () => {
-        await cacheForm(formData);
+        await cacheForm(rawFormData);
         setIsCached(true);
+
+        // Prefetch router caches for all language variants
+        if (rawFormData.languages && rawFormData.languages.length > 0) {
+            for (const lang of rawFormData.languages) {
+                router.prefetch(`/forms/${rawFormData.assessment_id}?lang=${lang}`);
+            }
+        }
     };
 
     // Navigate sections

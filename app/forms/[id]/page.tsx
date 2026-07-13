@@ -260,6 +260,7 @@ function FormPageContent({ params }: PageProps) {
             <OfflineStatus />
             <FormRenderer
                 formData={formData}
+                rawFormData={rawFormData!}
                 selectedLanguage={selectedLanguage}
                 onComplete={handleComplete}
             />

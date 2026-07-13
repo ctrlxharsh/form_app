@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   getPendingSubmissionCount,
   hasSchoolsCache,
@@ -44,6 +45,7 @@ interface Assessment {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [cachedForms, setCachedForms] = useState<CachedForm[]>([]);
   const [pendingSubmissions, setPendingSubmissions] = useState<OfflineSubmission[]>([]);
@@ -60,6 +62,20 @@ export default function HomePage() {
   const [selectedClass, setSelectedClass] = useState<number | 'all'>('all');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [teacherSession, setTeacherSession] = useState<TeacherSession | null>(null);
+
+  // Prefetch language variants for all cached forms when online
+  useEffect(() => {
+    if (online && cachedForms.length > 0) {
+      for (const form of cachedForms) {
+        const languages = form.formData.languages && form.formData.languages.length > 0
+          ? form.formData.languages
+          : ['English'];
+        for (const lang of languages) {
+          router.prefetch(`/forms/${form.formId}?lang=${lang}`);
+        }
+      }
+    }
+  }, [online, cachedForms, router]);
 
   // Load cached forms
   const loadCachedForms = useCallback(async () => {

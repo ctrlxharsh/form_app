@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pijam-v3';
+const CACHE_NAME = 'pijam-v5';
 
 // App shell to cache on install
 const APP_SHELL = [
@@ -69,6 +69,36 @@ self.addEventListener('fetch', (event) => {
                         if (cached) return cached;
                         return caches.match('/');
                     });
+                })
+        );
+        return;
+    }
+
+    // For client-side RSC payload fetches (Next.js App Router navigation)
+    if (request.headers.get('RSC') === '1' || url.searchParams.has('_rsc')) {
+        event.respondWith(
+            fetch(request)
+                .then((response) => {
+                    if (response.ok) {
+                        // Cache the RSC payload under a clean request to avoid Vary mismatch and _rsc query parameter differences
+                        const responseClone = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            const cleanUrl = new URL(request.url);
+                            cleanUrl.searchParams.delete('_rsc');
+                            const cleanRequest = new Request(cleanUrl.toString(), { headers: { 'RSC': '1' } });
+                            cache.put(cleanRequest, responseClone);
+                        });
+                    }
+                    return response;
+                })
+                .catch(async () => {
+                    // Offline - try cache with clean request, ignoring Vary headers
+                    const cleanUrl = new URL(request.url);
+                    cleanUrl.searchParams.delete('_rsc');
+                    const cleanRequest = new Request(cleanUrl.toString(), { headers: { 'RSC': '1' } });
+                    const cached = await caches.match(cleanRequest, { ignoreVary: true });
+                    if (cached) return cached;
+                    return new Response('', { status: 503 });
                 })
         );
         return;
