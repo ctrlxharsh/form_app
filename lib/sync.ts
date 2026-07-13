@@ -130,27 +130,20 @@ const FAILURES_BEFORE_OFFLINE = 2;
 export async function checkActualConnectivity(): Promise<boolean> {
     // Quick check first - if navigator says offline, trust it
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        consecutiveFailures = FAILURES_BEFORE_OFFLINE; // immediately mark as offline
         return false;
     }
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
         const response = await fetch('/api/health', {
             method: 'HEAD',
             signal: controller.signal,
             cache: 'no-store'
         });
         clearTimeout(timeoutId);
-        if (response.ok) {
-            consecutiveFailures = 0; // reset on success
-            return true;
-        }
-        consecutiveFailures++;
-        return consecutiveFailures < FAILURES_BEFORE_OFFLINE;
+        return response.ok;
     } catch {
-        consecutiveFailures++;
-        return consecutiveFailures < FAILURES_BEFORE_OFFLINE;
+        return false;
     }
 }
 

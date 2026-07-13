@@ -24,7 +24,6 @@ import {
 import {
   initSyncListeners,
   triggerSync,
-  isOnline,
   forceSyncSchools,
   forceSyncAssessments,
   forceSyncStudents,
@@ -119,7 +118,7 @@ export default function HomePage() {
     }
 
     // If online, fetch fresh data from API
-    if (isOnline()) {
+    if (online) {
       try {
         // Use forceSyncAssessments so it goes through the cache and pruning pipeline
         const data = await forceSyncAssessments();
@@ -135,7 +134,7 @@ export default function HomePage() {
         console.error('Failed to sync assessments on load:', err);
       }
     }
-  }, [selectedClass, loadCachedForms]);
+  }, [selectedClass, loadCachedForms, online]);
 
   // Initial load
   useEffect(() => {
@@ -187,7 +186,8 @@ export default function HomePage() {
         // Count removal per user request
       }
 
-      if (isOnline()) {
+      const actuallyOnline = await checkActualConnectivity();
+      if (actuallyOnline) {
         triggerSync().catch(console.error);
       }
 
