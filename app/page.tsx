@@ -27,6 +27,7 @@ import {
   isOnline,
   forceSyncSchools,
   forceSyncAssessments,
+  forceSyncStudents,
   onSyncStatusChange,
   checkActualConnectivity,
   type SyncStatus
@@ -52,9 +53,11 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [syncingAssessments, setSyncingAssessments] = useState(false);
   const [syncingSchools, setSyncingSchools] = useState(false);
+  const [syncingStudents, setSyncingStudents] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [studentCount, setStudentCount] = useState(0);
   const [hasCache, setHasCache] = useState(false);
   const [lastSchoolsSync, setLastSchoolsSync] = useState<Date | null>(null);
   const [online, setOnline] = useState(true);
@@ -88,6 +91,17 @@ export default function HomePage() {
     const pending = await getPendingSubmissions();
     setPendingSubmissions(pending);
     setPendingCount(pending.length);
+  }, []);
+
+  // Load cached student count
+  const loadStudentCount = useCallback(async () => {
+    try {
+      const { db } = await import('@/lib/db');
+      const count = await db.cachedStudents.count();
+      setStudentCount(count);
+    } catch (e) {
+      console.error('Failed to load student count:', e);
+    }
   }, []);
 
   // Load assessments (from cache first, then API if online)
@@ -147,6 +161,7 @@ export default function HomePage() {
       if (!status.isSyncing) {
         loadPendingSubmissions();
         loadCachedForms();
+        loadStudentCount();
       }
     });
 
@@ -166,6 +181,7 @@ export default function HomePage() {
       await loadCachedForms();
       await loadAssessments();
       await loadPendingSubmissions();
+      await loadStudentCount();
 
       if (session) {
         // Count removal per user request
@@ -224,10 +240,24 @@ export default function HomePage() {
     }
   };
 
+  const handleSyncStudents = async () => {
+    if (!online) return;
+    setSyncingStudents(true);
+    try {
+      await forceSyncStudents();
+      await loadStudentCount();
+    } catch (err) {
+      setError('Failed to sync students');
+    } finally {
+      setSyncingStudents(false);
+    }
+  };
+
   const handleSyncAll = async () => {
     if (!online) return;
     await triggerSync();
     await loadPendingSubmissions();
+    await loadStudentCount();
   };
 
   // Get cached form IDs for highlighting
@@ -329,6 +359,25 @@ export default function HomePage() {
               style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
             >
               {syncingAssessments ? (
+                <span className="mini-spinner" />
+              ) : (
+                <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>sync</span>
+              )}
+            </button>
+          </div>
+
+          <div className="sync-item">
+            <div className="sync-info">
+              <span className="sync-label">Students</span>
+              <span className="sync-count">{studentCount} loaded</span>
+            </div>
+            <button
+              onClick={handleSyncStudents}
+              disabled={!online || syncingStudents}
+              className="sync-btn"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {syncingStudents ? (
                 <span className="mini-spinner" />
               ) : (
                 <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>sync</span>

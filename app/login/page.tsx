@@ -10,7 +10,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { loginTeacher, isTeacherLoggedIn } from '@/lib/auth';
-import { forceSyncSchools } from '@/lib/sync';
+import { forceSyncSchools, forceSyncStudents } from '@/lib/sync';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -64,11 +64,12 @@ export default function LoginPage() {
         try {
             const result = await loginTeacher({ username: username.trim(), password });
             if (result.success) {
-                // Force sync schools to ensure we cache only assigned schools
+                // Force sync schools and students to ensure we cache only assigned schools and their students
                 try {
                     await forceSyncSchools();
+                    await forceSyncStudents();
                 } catch (e) {
-                    console.error('Failed to sync schools on login', e);
+                    console.error('Failed to sync schools/students on login', e);
                 }
                 router.push('/');
             } else {

@@ -95,6 +95,16 @@ export async function forceSyncAssessments(): Promise<CachedAssessment[]> {
     return await syncAssessments();
 }
 
+/**
+ * Force sync students (manual trigger)
+ */
+export async function forceSyncStudents(): Promise<void> {
+    if (!navigator.onLine) {
+        throw new Error('Cannot sync while offline');
+    }
+    await syncStudents();
+}
+
 export function isOnline(): boolean {
     return typeof navigator !== 'undefined' && navigator.onLine;
 }
