@@ -92,7 +92,7 @@ export default function StudentsPage() {
             setSession(sess);
             try {
                 console.log(`[DEBUG] Fetching schools for user ${sess.userId} (${sess.role})...`);
-                const schoolRes = await fetch(`/api/schools?userId=${sess.userId}&role=${sess.role}`);
+                const schoolRes = await fetch(`/api/schools?userId=${sess.userId}&role=${encodeURIComponent(sess.role)}`);
                 if (schoolRes.ok) {
                     const data = await schoolRes.json();
                     console.log('[DEBUG] Loaded schools:', data);
@@ -128,7 +128,7 @@ export default function StudentsPage() {
             console.log(`[DEBUG] fetchFilteredStudents() triggered. Filter states - School: "${selectedSchool}", Class: "${selectedClass}"`);
             setFetchingStudents(true);
             try {
-                let url = `/api/students?teacherId=${userId}&role=${role}`;
+                let url = `/api/students?teacherId=${userId}&role=${encodeURIComponent(role)}`;
                 if (selectedSchool) url += `&schoolId=${selectedSchool}`;
                 if (selectedClass) url += `&classGrade=${selectedClass}`;
                 

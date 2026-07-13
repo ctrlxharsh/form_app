@@ -132,7 +132,7 @@ export default function GradingPage() {
         let serverPending: SyncedSubmission[] = [];
         if (onlineRef.current) {
             try {
-                const response = await fetch(`/api/grading?teacherId=${session.userId}&status=pending&role=${session.role}`);
+                const response = await fetch(`/api/grading?teacherId=${session.userId}&status=pending&role=${encodeURIComponent(session.role)}`);
                 if (response.ok) {
                     const data = await response.json();
                     serverPending = data.submissions.map((sub: any): SyncedSubmission => ({
@@ -349,7 +349,7 @@ export default function GradingPage() {
 
         if (onlineRef.current) {
             try {
-                const res = await fetch(`/api/grading?teacherId=${session.userId}&recent=true&role=${session.role}`);
+                const res = await fetch(`/api/grading?teacherId=${session.userId}&recent=true&role=${encodeURIComponent(session.role)}`);
                 if (res.ok) {
                     const data = await res.json();
                     setRecentSubmissions(data.submissions);

@@ -367,7 +367,7 @@ async function syncStudents(): Promise<void> {
         const session = await db.table('teacherSession').get(1);
         if (!session) return;
 
-        const response = await fetch(`/api/students?teacherId=${session.userId}&role=${session.role}`);
+        const response = await fetch(`/api/students?teacherId=${session.userId}&role=${encodeURIComponent(session.role)}`);
         if (!response.ok) return;
 
         const students = await response.json();
@@ -404,7 +404,7 @@ export async function syncGradingData(): Promise<void> {
         const session = await db.table('teacherSession').get(1);
         if (!session) return;
 
-        const response = await fetch(`/api/grading?teacherId=${session.userId}&role=${session.role}`);
+        const response = await fetch(`/api/grading?teacherId=${session.userId}&role=${encodeURIComponent(session.role)}`);
         if (!response.ok) return;
 
         const data = await response.json();
