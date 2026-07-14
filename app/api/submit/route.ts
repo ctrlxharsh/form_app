@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
         // Validate required fields
         const { assessmentId, clientSubmissionId, schoolId, studentFirstName, studentLastName, selectedLanguage, geolocation, gender, classGrade, section, answers, submittedByTeacher, deviceInfo, studentId } = body;
 
-        if (!assessmentId || !schoolId || !studentFirstName || !studentLastName || !selectedLanguage || !gender || !classGrade || !section) {
+        if (!assessmentId || !schoolId || !studentFirstName || !selectedLanguage || !gender || !classGrade || !section) {
             return NextResponse.json(
                 { error: 'Missing required fields' },
                 { status: 400 }
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
                 (student_id IS NOT NULL AND student_id = ${validStudentId})
                 OR 
                 (LOWER(TRIM(student_first_name)) = LOWER(TRIM(${studentFirstName})) 
-                 AND LOWER(TRIM(student_last_name)) = LOWER(TRIM(${studentLastName})))
+                 AND LOWER(TRIM(student_last_name)) = LOWER(TRIM(${studentLastName || ''})))
             )
             -- Exclude the current submission itself if we are retrying a sync for it
             AND (
@@ -305,7 +305,7 @@ export async function POST(request: NextRequest) {
             assessmentId,
             schoolId,
             studentFirstName,
-            studentLastName,
+            studentLastName || '',
             gender,
             classGrade,
             section,
