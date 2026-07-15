@@ -141,9 +141,10 @@ export async function POST(request: NextRequest) {
                 WHERE a1.assessment_id = ${assessmentId}
             )
             AND (
-                (student_id IS NOT NULL AND student_id = ${validStudentId})
+                (${validStudentId}::integer IS NOT NULL AND student_id = ${validStudentId})
                 OR 
-                (LOWER(TRIM(student_first_name)) = LOWER(TRIM(${studentFirstName})) 
+                (${validStudentId}::integer IS NULL 
+                 AND LOWER(TRIM(student_first_name)) = LOWER(TRIM(${studentFirstName})) 
                  AND LOWER(TRIM(student_last_name)) = LOWER(TRIM(${studentLastName || ''})))
             )
             -- Exclude the current submission itself if we are retrying a sync for it

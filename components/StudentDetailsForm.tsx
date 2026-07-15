@@ -82,7 +82,7 @@ export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: 
     };
 
     // Check offline + synced submissions across a set of assessment IDs
-    const checkOfflineDuplicate = async (siblingIds: number[], firstName: string, lastName: string): Promise<boolean> => {
+    const checkOfflineDuplicate = async (siblingIds: number[], studentId: number | null | undefined, firstName: string, lastName: string): Promise<boolean> => {
         try {
             const { db } = await import('@/lib/db');
             const fnLower = firstName.toLowerCase().trim();
@@ -92,14 +92,24 @@ export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: 
                 const existingOffline = await db.offlineSubmissions
                     .where('formId')
                     .equals(aId)
-                    .filter(s => s.studentFirstName.toLowerCase().trim() === fnLower && s.studentLastName.toLowerCase().trim() === lnLower)
+                    .filter(s => {
+                        if (studentId && s.studentId) {
+                            return s.studentId === studentId;
+                        }
+                        return s.studentFirstName.toLowerCase().trim() === fnLower && s.studentLastName.toLowerCase().trim() === lnLower;
+                    })
                     .first();
                 if (existingOffline) return true;
 
                 const existingSynced = await db.syncedSubmissions
                     .where('assessmentId')
                     .equals(aId)
-                    .filter(s => s.studentFirstName.toLowerCase().trim() === fnLower && s.studentLastName.toLowerCase().trim() === lnLower)
+                    .filter(s => {
+                        if (studentId && s.studentId) {
+                            return s.studentId === studentId;
+                        }
+                        return s.studentFirstName.toLowerCase().trim() === fnLower && s.studentLastName.toLowerCase().trim() === lnLower;
+                    })
                     .first();
                 if (existingSynced) return true;
             }
@@ -125,7 +135,7 @@ export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: 
                 let hasSubmittedOffline = false;
                 if (assessmentId) {
                     const siblingIds = await getSiblingAssessmentIds(assessmentId);
-                    hasSubmittedOffline = await checkOfflineDuplicate(siblingIds, student.first_name, student.last_name);
+                    hasSubmittedOffline = await checkOfflineDuplicate(siblingIds, student.student_id, student.first_name, student.last_name);
                 }
 
                 setLookupResult({
@@ -172,7 +182,7 @@ export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: 
                 let hasSubmittedOffline = false;
                 if (assessmentId) {
                     const siblingIds = await getSiblingAssessmentIds(assessmentId);
-                    hasSubmittedOffline = await checkOfflineDuplicate(siblingIds, student.first_name, student.last_name);
+                    hasSubmittedOffline = await checkOfflineDuplicate(siblingIds, student.student_id, student.first_name, student.last_name);
                 }
 
                 setLookupResult({

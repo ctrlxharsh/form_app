@@ -203,6 +203,7 @@ export interface SyncedSubmission {
     submissionId: number;     // Server submission ID
     studentFirstName: string;
     studentLastName: string;
+    studentId?: number | null;
     classGrade: number;
     section: string;
     submittedAt: Date;

@@ -139,6 +139,7 @@ export default function GradingPage() {
                         submissionId: sub.submission_id,
                         studentFirstName: sub.student_first_name,
                         studentLastName: sub.student_last_name,
+                        studentId: sub.student_id,
                         classGrade: sub.class_grade,
                         section: sub.section,
                         submittedAt: new Date(sub.submitted_at),
