@@ -10,7 +10,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { isOnline, checkActualConnectivity } from '@/lib/sync';
-import { verifyStudentOffline } from '@/lib/db';
+import { verifyStudentOffline, db } from '@/lib/db';
+import { getTeacherSession } from '@/lib/auth';
 
 export interface StudentDetails {
     studentFirstName: string;
@@ -120,18 +121,41 @@ export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: 
         }
     };
 
+    // Check if current user has offline access to student's school
+    const checkOfflineStudentAccess = async (schoolId: number): Promise<boolean> => {
+        const session = await getTeacherSession();
+        if (session) {
+            const isPrivileged = ['M&E', 'Lead', 'Admin', 'Program Lead'].includes(session.role);
+            if (!isPrivileged) {
+                const cachedSchool = await db.cachedSchools.get(schoolId);
+                if (!cachedSchool) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
         setLookupResult(null);
 
+        const session = await getTeacherSession();
         const online = await checkActualConnectivity();
 
         if (!online) {
             // Offline verification
             const student = await verifyStudentOffline(studentId, password);
             if (student) {
+                const hasAccess = await checkOfflineStudentAccess(student.school_id);
+                if (!hasAccess) {
+                    setError('You do not have access to this student');
+                    setLoading(false);
+                    return;
+                }
+
                 let hasSubmittedOffline = false;
                 if (assessmentId) {
                     const siblingIds = await getSiblingAssessmentIds(assessmentId);
@@ -163,7 +187,13 @@ export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: 
             const res = await fetch('/api/students/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ studentId, password, assessmentId })
+                body: JSON.stringify({
+                    studentId,
+                    password,
+                    assessmentId,
+                    teacherId: session?.userId,
+                    role: session?.role
+                })
             });
 
             if (res.ok) {
@@ -179,6 +209,13 @@ export function StudentDetailsForm({ assessmentGrade, assessmentId, onSubmit }: 
             // Fallback to offline verification if online request fails
             const student = await verifyStudentOffline(studentId, password);
             if (student) {
+                const hasAccess = await checkOfflineStudentAccess(student.school_id);
+                if (!hasAccess) {
+                    setError('You do not have access to this student');
+                    setLoading(false);
+                    return;
+                }
+
                 let hasSubmittedOffline = false;
                 if (assessmentId) {
                     const siblingIds = await getSiblingAssessmentIds(assessmentId);

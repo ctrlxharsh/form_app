@@ -8,7 +8,7 @@ import { sql } from '@/lib/postgres';
  */
 export async function POST(request: NextRequest) {
     try {
-        const { studentId, password, assessmentId } = await request.json();
+        const { studentId, password, assessmentId, teacherId, role } = await request.json();
 
         if (!studentId || !password) {
             return NextResponse.json({ error: 'Student ID and Password are required' }, { status: 400 });
@@ -28,6 +28,40 @@ export async function POST(request: NextRequest) {
         }
 
         const student = students[0];
+
+        // Access check based on teacherId & role
+        if (teacherId) {
+            const isPrivileged = ['M&E', 'Lead', 'Admin', 'Program Lead'].includes(role || 'Teacher');
+            if (!isPrivileged) {
+                let hasAccess;
+                const parsedTeacherId = parseInt(String(teacherId), 10);
+                if (role === 'Program Manager') {
+                    hasAccess = await sql`
+                        SELECT 1 FROM teacher_schools ts
+                        WHERE ts.school_id = ${student.school_id}
+                        AND (
+                            ts.teacher_id = ${parsedTeacherId}
+                            OR ts.teacher_id IN (
+                                SELECT teacher_id FROM program_manager_teacher_mapping 
+                                WHERE program_manager_id = ${parsedTeacherId}
+                            )
+                        )
+                        LIMIT 1
+                    `;
+                } else {
+                    hasAccess = await sql`
+                        SELECT 1 FROM teacher_schools ts
+                        WHERE ts.school_id = ${student.school_id}
+                        AND ts.teacher_id = ${parsedTeacherId}
+                        LIMIT 1
+                    `;
+                }
+
+                if (hasAccess.length === 0) {
+                    return NextResponse.json({ error: 'You do not have access to this student' }, { status: 403 });
+                }
+            }
+        }
 
         // Check for duplicate submission (across all language variants) if assessmentId is passed
         let hasSubmitted = false;
