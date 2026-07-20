@@ -205,24 +205,24 @@ export default function HomePage() {
     async function loadData() {
       setLoading(true);
 
-      const [cached, lastSync, session] = await Promise.all([
-        hasSchoolsCache(),
-        getLastSchoolsSyncTime(),
-        getTeacherSession()
-      ]);
+      // Fetch teacher session immediately so UI updates right away
+      getTeacherSession().then(sess => setTeacherSession(sess)).catch(() => {});
 
-      setHasCache(cached);
-      setLastSchoolsSync(lastSync);
-      setTeacherSession(session);
+      try {
+        const [cached, lastSync] = await Promise.all([
+          hasSchoolsCache(),
+          getLastSchoolsSyncTime()
+        ]);
+        setHasCache(cached);
+        setLastSchoolsSync(lastSync);
+      } catch (err) {
+        console.error('Failed to load cache meta:', err);
+      }
 
       await loadCachedForms();
       await loadAssessments();
       await loadPendingSubmissions();
       await loadStudentCount();
-
-      if (session) {
-        // Count removal per user request
-      }
 
       const actuallyOnline = await checkActualConnectivity();
       if (actuallyOnline) {

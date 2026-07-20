@@ -101,7 +101,7 @@ export default function GradingPage() {
     useEffect(() => {
         async function checkSession() {
             const sess = await getTeacherSession();
-            if (!sess) { router.push('/login'); return; }
+            if (!sess) { router.replace('/login'); return; }
             setSession(sess);
             setLoading(false);
         }

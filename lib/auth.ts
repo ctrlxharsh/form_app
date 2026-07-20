@@ -72,6 +72,15 @@ function decryptPassword(encrypted: string): string {
 export async function getTeacherSession(): Promise<TeacherSession | null> {
     try {
         const session = await db.table('teacherSession').get(1);
+        if (session) return session;
+    } catch {
+        // Fall through to retry below
+    }
+
+    // Short retry delay in case IndexedDB is opening or stabilizing
+    try {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const session = await db.table('teacherSession').get(1);
         return session || null;
     } catch {
         return null;

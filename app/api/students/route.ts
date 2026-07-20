@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/postgres';
 import { logError } from '@/lib/error-logger';
+import { formatUdise } from '@/lib/utils';
 
 /**
  * GET /api/students?schoolId=X&classGrade=Y&teacherId=Z&role=W
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest) {
         }
 
         const schools = await sql`SELECT udise_code FROM schools WHERE school_id = ${parseInt(schoolId)}`;
-        const schoolUdise = schools.length > 0 ? schools[0].udise_code : '';
+        const schoolUdise = schools.length > 0 ? formatUdise(schools[0].udise_code) : '';
 
         const result = await sql`
             INSERT INTO students (

@@ -238,13 +238,16 @@ export async function getSchoolsByIntervention(intervention: string) {
     `;
 }
 
+import { formatUdise } from './utils';
+
 /**
  * Validate school ID matches UDISE code
  * Mirrors: validate_school_udise() from Streamlit
  */
 export async function validateSchoolUdise(schoolId: number, udiseCode: string) {
+  const formatted = formatUdise(udiseCode);
   const result = await sql`
-    SELECT 1 FROM schools WHERE school_id = ${schoolId} AND udise_code = ${udiseCode}
+    SELECT 1 FROM schools WHERE school_id = ${schoolId} AND (udise_code = ${formatted} OR LPAD(udise_code, 11, '0') = ${formatted})
   `;
   return result.length > 0;
 }

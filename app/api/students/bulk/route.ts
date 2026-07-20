@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/postgres';
 import { logError } from '@/lib/error-logger';
+import { formatUdise } from '@/lib/utils';
 
 interface BulkStudent {
     schoolName: string;
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
             }
 
             const stateCode = getStateCode(school.state);
-            const udiseLast5 = school.udise_code.slice(-5);
+            const udiseLast5 = formatUdise(school.udise_code).slice(-5);
             const currentYear = 2026;
             const passingYear = (currentYear + (10 - classGrade)).toString().slice(-2);
             const cohortId = `PJM${stateCode}${passingYear}${udiseLast5}`;
@@ -124,7 +125,7 @@ export async function POST(request: NextRequest) {
                 fathers_name: s.fatherName || '',
                 mothers_name: s.motherName || '',
                 school_id: school.school_id,
-                school_udise: school.udise_code,
+                school_udise: formatUdise(school.udise_code),
                 class_grade: classGrade,
                 section: s.section || 'A',
                 password: s.password || '01012001',

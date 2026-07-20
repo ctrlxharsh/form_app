@@ -27,7 +27,7 @@ export default function LoginPage() {
         async function checkSession() {
             const loggedIn = await isTeacherLoggedIn();
             if (loggedIn) {
-                router.push('/');
+                router.replace('/');
             } else {
                 setCheckingSession(false);
             }
@@ -71,7 +71,7 @@ export default function LoginPage() {
                 } catch (e) {
                     console.error('Failed to sync schools/students on login', e);
                 }
-                router.push('/');
+                router.replace('/');
             } else {
                 setError(result.error || 'Login failed');
             }

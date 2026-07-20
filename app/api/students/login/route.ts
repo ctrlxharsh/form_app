@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/postgres';
+import { formatUdise } from '@/lib/utils';
 
 /**
  * POST /api/students/login
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
             section: student.section,
             schoolId: student.school_id,
             schoolName: student.school_name,
-            udiseCode: student.udise_code,
+            udiseCode: formatUdise(student.udise_code),
             intervention: student.intervention || 'Prototype',
             gender: student.gender || 'Male',
             hasSubmitted

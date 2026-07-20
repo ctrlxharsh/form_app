@@ -77,6 +77,8 @@ export async function GET(request: NextRequest) {
     }
 }
 
+import { formatUdise } from '@/lib/utils';
+
 /**
  * POST /api/schools/validate
  * Validates that a school ID matches a UDISE code
@@ -93,8 +95,9 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const formatted = formatUdise(udiseCode);
         const result = await sql`
-            SELECT 1 FROM schools WHERE school_id = ${schoolId} AND udise_code = ${udiseCode}
+            SELECT 1 FROM schools WHERE school_id = ${schoolId} AND (udise_code = ${formatted} OR LPAD(udise_code, 11, '0') = ${formatted})
         `;
         const isValid = result.length > 0;
         return NextResponse.json({ valid: isValid });

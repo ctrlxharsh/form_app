@@ -85,7 +85,7 @@ export default function StudentsPage() {
             const sess = await getTeacherSession();
             if (!sess) {
                 console.warn('[DEBUG] No session found. Redirecting to /login.');
-                router.push('/login');
+                router.replace('/login');
                 return;
             }
             console.log('[DEBUG] Session found:', sess);
