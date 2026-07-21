@@ -139,7 +139,8 @@ function FormPageContent({ params }: PageProps) {
                     } else if (response.status === 404) {
                         setError('Form not found');
                     } else {
-                        throw new Error('Failed to fetch form');
+                        const data = await response.json().catch(() => null);
+                        setError(data?.error || `Failed to load form (${response.status}). Please try again.`);
                     }
                 } else {
                     setError('Form not available offline. Please save it for offline use while online.');
