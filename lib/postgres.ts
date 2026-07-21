@@ -11,6 +11,7 @@ import postgres from 'postgres';
 // Create a pooled SQL client. ssl: 'require' matches ?sslmode=require in the URL.
 const client = postgres(process.env.DATABASE_URL!, {
     ssl: 'require',
+    prepare: false,
     max: 10,           // Max pool connections
     idle_timeout: 20,  // Close idle connections after 20s
     connect_timeout: 10,

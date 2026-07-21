@@ -7,13 +7,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getFullAssessment } from '@/lib/postgres';
+import { logError } from '@/lib/error-logger';
 
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { id } = await params;
+        const resolvedParams = await params;
+        const id = resolvedParams?.id;
         const assessmentId = parseInt(id, 10);
 
         if (isNaN(assessmentId)) {
@@ -44,8 +46,13 @@ export async function GET(
 
     } catch (error) {
         console.error('Error fetching assessment:', error);
+        await logError({
+            error,
+            endpoint: '/api/forms/[id] GET'
+        });
+        const errorMessage = error instanceof Error ? error.message : 'Failed to fetch assessment';
         return NextResponse.json(
-            { error: 'Failed to fetch assessment' },
+            { error: errorMessage },
             { status: 500 }
         );
     }

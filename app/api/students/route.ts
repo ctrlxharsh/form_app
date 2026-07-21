@@ -140,7 +140,8 @@ export async function GET(request: NextRequest) {
             endpoint: '/api/students GET',
             userId: request.nextUrl.searchParams.get('teacherId')
         });
-        return NextResponse.json({ error: 'Failed to fetch students' }, { status: 500 });
+        const errorMessage = error instanceof Error ? error.message : 'Failed to fetch students';
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }
 
