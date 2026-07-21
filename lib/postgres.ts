@@ -8,12 +8,13 @@
 
 import postgres from 'postgres';
 
-// Create a pooled SQL client. ssl: 'require' matches ?sslmode=require in the URL.
+// Create a pooled SQL client for serverless.
+// max: 1 & idle_timeout: 1 prevents Vercel lambda scaling from exceeding PostgreSQL connection limits (e.g. 22).
 const client = postgres(process.env.DATABASE_URL!, {
     ssl: 'require',
     prepare: false,
-    max: 10,           // Max pool connections
-    idle_timeout: 20,  // Close idle connections after 20s
+    max: 1,            // Max 1 connection per serverless instance
+    idle_timeout: 1,   // Close idle connections after 1s
     connect_timeout: 10,
 });
 
