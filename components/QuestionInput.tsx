@@ -11,6 +11,7 @@ import React from 'react';
 import type { FormQuestion, QuestionOption } from '@/lib/db';
 import { OfflineImage } from './OfflineImage';
 import { ImagePopup } from './ImagePopup';
+import { detectScriptDirection } from '@/lib/scriptUtils';
 
 interface QuestionInputProps {
     question: FormQuestion;
@@ -41,7 +42,7 @@ export function QuestionInput({ question, value, onChange, questionNumber }: Que
             {/* Question Header */}
             <div className="question-header">
                 <span className="question-number">Q{questionNumber}.</span>
-                <span className="question-text" style={{ whiteSpace: 'pre-wrap' }}>{question.question_text}{requiredMarker}</span>
+                <span className="question-text" dir="auto" style={{ whiteSpace: 'pre-wrap' }}>{question.question_text}{requiredMarker}</span>
                 {marks && <span className="question-marks">{marks}</span>}
             </div>
 
@@ -230,7 +231,7 @@ function MCQInput({
                             />
                         )}
                         {opt.option_text && (
-                            <span className="option-text" style={{ whiteSpace: 'pre-wrap' }}>{opt.option_text}</span>
+                            <span className="option-text" dir="auto" style={{ whiteSpace: 'pre-wrap' }}>{opt.option_text}</span>
                         )}
                     </label>
                 ))}
@@ -294,7 +295,7 @@ function MultipleSelectInput({
                             />
                         )}
                         {opt.option_text && (
-                            <span className="option-text" style={{ whiteSpace: 'pre-wrap' }}>{opt.option_text}</span>
+                            <span className="option-text" dir="auto" style={{ whiteSpace: 'pre-wrap' }}>{opt.option_text}</span>
                         )}
                     </label>
                 ))}
@@ -343,10 +344,12 @@ function TextInput({
     value: string;
     onChange: (value: string) => void;
 }) {
+    const dir = detectScriptDirection(value);
     return (
         <input
             type="text"
             value={value}
+            dir={dir}
             onChange={(e) => onChange(e.target.value)}
             className="text-input"
             placeholder="Your answer"
@@ -363,9 +366,11 @@ function TextAreaInput({
     value: string;
     onChange: (value: string) => void;
 }) {
+    const dir = detectScriptDirection(value);
     return (
         <textarea
             value={value}
+            dir={dir}
             onChange={(e) => onChange(e.target.value)}
             className="textarea-input"
             placeholder="Your answer"

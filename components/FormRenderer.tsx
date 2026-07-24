@@ -476,14 +476,14 @@ export function FormRenderer({ formData, rawFormData, selectedLanguage, onComple
 
                 {/* Section Header */}
                 <div className="section-header">
-                    <h2 className="section-title">{currentSection.section_title}</h2>
+                    <h2 className="section-title" dir="auto">{currentSection.section_title}</h2>
                     <span className="section-progress">
                         {progress.answered}/{progress.total} answered
                     </span>
                 </div>
 
                 {currentSection.section_instructions && (
-                    <div className="section-instructions">
+                    <div className="section-instructions" dir="auto">
                         <p style={{ whiteSpace: 'pre-wrap' }}>{currentSection.section_instructions}</p>
                     </div>
                 )}
@@ -701,7 +701,7 @@ function FormHeader({
                     Back to Dashboard
                 </Link>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <h1 className="form-title">{formData.title}</h1>
+                    <h1 className="form-title" dir="auto">{formData.title}</h1>
                     {selectedLanguage && (
                         <span style={{
                             display: 'inline-flex',
@@ -723,7 +723,7 @@ function FormHeader({
                     )}
                 </div>
                 {formData.description && (
-                    <p className="form-description">{formData.description}</p>
+                    <p className="form-description" dir="auto">{formData.description}</p>
                 )}
             </div>
             <div className="form-header-actions">

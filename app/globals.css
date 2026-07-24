@@ -1986,3 +1986,26 @@ body {
   transition: transform 0.2s ease-out;
 }
 
+/* ============ DYNAMIC SCRIPT & RTL / LTR STYLES ============ */
+[dir="rtl"],
+input[dir="rtl"],
+textarea[dir="rtl"],
+.rtl-text {
+  direction: rtl !important;
+  text-align: right !important;
+  font-family: system-ui, -apple-system, 'Noto Nastaliq Urdu', 'Segoe UI', Roboto, sans-serif;
+}
+
+[dir="ltr"],
+input[dir="ltr"],
+textarea[dir="ltr"],
+.ltr-text {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+[dir="auto"] {
+  unicode-bidi: plaintext;
+}
+
+
