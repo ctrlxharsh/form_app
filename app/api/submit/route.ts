@@ -105,14 +105,26 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Class grade must be between 4 and 10' }, { status: 400 });
         }
 
-        // Validate submittedByTeacher exists in users table to prevent FK violations
+        // Validate submittedByTeacher exists in users table and check role permission
         let validTeacherId: number | null = null;
         if (submittedByTeacher) {
-            const teacherExists = await sql`
-                SELECT 1 FROM users WHERE user_id = ${parseInt(String(submittedByTeacher), 10)} AND is_active = true
+            const parsedTeacherId = parseInt(String(submittedByTeacher), 10);
+            const teacherRes = await sql`
+                SELECT u.user_id, r.role_name
+                FROM users u
+                LEFT JOIN user_roles ur ON u.user_id = ur.user_id
+                LEFT JOIN roles r ON ur.role_id = r.role_id
+                WHERE u.user_id = ${parsedTeacherId} AND u.is_active = true
             `;
-            if (teacherExists.length > 0) {
-                validTeacherId = parseInt(String(submittedByTeacher), 10);
+            if (teacherRes.length > 0) {
+                const roleName = teacherRes[0].role_name;
+                if (roleName && ['Lead', 'Program Lead', 'Program Manager', 'PM', 'M&E', 'Admin'].includes(roleName.trim())) {
+                    return NextResponse.json(
+                        { error: 'Lead and Program Manager roles are not permitted to submit assessments. Please log in with a Teacher account.' },
+                        { status: 403 }
+                    );
+                }
+                validTeacherId = parsedTeacherId;
             }
         }
 

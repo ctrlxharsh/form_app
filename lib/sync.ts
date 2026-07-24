@@ -8,6 +8,8 @@
 import {
     db,
     getPendingSubmissions,
+    getAllUnsyncedSubmissions,
+    resetFailedSubmissionsToPending,
     getPendingImagesForSubmission,
     updateSubmissionStatus,
     updateImageStatus,
@@ -163,11 +165,15 @@ function isNetworkError(error: unknown): boolean {
 // ============ INTERNAL SYNC LOGIC ============
 
 async function handleOnline(): Promise<void> {
-    // Small delay to allow network to stabilize after coming online
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const actuallyOnline = await checkActualConnectivity();
-    if (actuallyOnline) {
-        await performSync();
+    // Retry checks at 1s, 3s, and 7s to allow network socket to stabilize
+    const delays = [1000, 3000, 7000];
+    for (const delay of delays) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        const actuallyOnline = await checkActualConnectivity();
+        if (actuallyOnline) {
+            await performSync();
+            break;
+        }
     }
 }
 
@@ -211,60 +217,22 @@ async function performSync(): Promise<void> {
         // Step 2: Sync students for offline login
         await syncStudents();
 
-        // Step 3: Sync pending submissions — smart logic based on type
-        const pendingSubmissions = await getPendingSubmissions();
+        // Step 3: Sync all pending & failed offline submissions to server
+        // Reset any failed status to pending first so they get retried
+        await resetFailedSubmissionsToPending();
+        const pendingSubmissions = await getAllUnsyncedSubmissions();
 
         for (const submission of pendingSubmissions) {
-            if (!submission.hasSubjectiveQuestions) {
-                // Type A: Pure objective — auto-sync immediately
-                await syncSubmission(submission);
-            } else {
-                // Type B: Has subjective questions
-                // Only block sync if the submission actually HAS answers to grade.
-                // If all subjective questions were skipped (no content), sync immediately.
-                const hasActualSubjectiveAnswers = Object.values(submission.answers as Record<string, any>).some(ansVal =>
-                    ansVal && (
-                        (ansVal.text && ansVal.text.trim().length > 0) ||
-                        ansVal.imageUrl ||
-                        ansVal.localImageId != null ||
-                        (ansVal.selectedOptions && ansVal.selectedOptions.length > 0) ||
-                        (ansVal.rankingOrder && ansVal.rankingOrder.length > 0)
-                    )
-                );
-
-                if (!hasActualSubjectiveAnswers) {
-                    // No actual answers to grade — sync immediately (all subjective were skipped)
-                    await syncSubmission(submission);
-                } else {
-                    // Check if teacher has graded all subjective locally
-                    // Check if teacher has graded all subjective locally and marked as finalized (non-draft)
-                    const localGrades = await db.offlineGrades
-                        .where('submissionId')
-                        .equals(-submission.localId!)
-                        .toArray();
-
-                    const finalizedGrades = localGrades.filter(g => !g.isDraft);
-
-                    if (finalizedGrades.length > 0) {
-                        // Teacher pre-graded offline — sync with grades
-                        await syncSubmission(submission);
-                    } else {
-                        // No grades yet — skip, wait for teacher to grade it first
-                        console.log(`[Sync] Skipping offline Type B submission ${submission.localId} (not yet graded by teacher)`);
-                    }
-                }
-            }
+            // Directly sync offline submissions (both objective and subjective) to server
+            await syncSubmission(submission);
         }
 
-        // Step 3: Push local offline grades for online server submissions BEFORE fetching new data
+        // Step 4: Push local offline grades for online server submissions BEFORE fetching new data
         await pushOfflineGrades();
-
-        // Note: syncGradingData() is now intentionally NOT called here.
-        // The grading page fetches submissions on-demand when opened.
 
         const remainingCount = await db.offlineSubmissions
             .where('status')
-            .equals('pending')
+            .anyOf(['pending', 'syncing', 'failed'])
             .count();
 
         notifyListeners({
@@ -279,7 +247,7 @@ async function performSync(): Promise<void> {
     } catch (error) {
         notifyListeners({
             isSyncing: false,
-            pendingCount: await db.offlineSubmissions.where('status').equals('pending').count(),
+            pendingCount: await db.offlineSubmissions.where('status').anyOf(['pending', 'syncing', 'failed']).count(),
             lastSyncAt: null,
             error: error instanceof Error ? error.message : 'Sync failed',
             syncingSchools: false,
@@ -519,7 +487,15 @@ async function syncSubmission(submission: OfflineSubmission): Promise<void> {
 
         if (!response.ok) {
             const error = await response.text();
-            throw new Error(`Server error: ${error}`);
+            if (response.status === 400 && (error.includes('already submitted') || error.includes('duplicate'))) {
+                console.warn(`[Sync] Submission ${localId} already recorded on server: ${error}`);
+                await updateSubmissionStatus(localId, 'synced');
+                if (offlineGrades.length > 0) {
+                    await db.offlineGrades.where('submissionId').equals(-localId).delete();
+                }
+                return;
+            }
+            throw new Error(`Server error (${response.status}): ${error}`);
         }
 
         const result = await response.json();
@@ -537,7 +513,13 @@ async function syncSubmission(submission: OfflineSubmission): Promise<void> {
             undefined,
             error instanceof Error ? error.message : 'Unknown error'
         );
+        throw error;
     }
+}
+
+export async function retryFailedSubmissions(): Promise<void> {
+    await resetFailedSubmissionsToPending();
+    await triggerSync();
 }
 
 async function uploadPendingImages(

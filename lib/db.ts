@@ -584,6 +584,22 @@ export async function getPendingSubmissions(): Promise<OfflineSubmission[]> {
         .toArray();
 }
 
+export async function getAllUnsyncedSubmissions(): Promise<OfflineSubmission[]> {
+    return db.offlineSubmissions
+        .where('status')
+        .anyOf(['pending', 'syncing', 'failed'])
+        .toArray();
+}
+
+export async function resetFailedSubmissionsToPending(): Promise<void> {
+    const failedSubs = await db.offlineSubmissions.where('status').equals('failed').toArray();
+    for (const sub of failedSubs) {
+        if (sub.localId) {
+            await db.offlineSubmissions.update(sub.localId, { status: 'pending', errorMessage: null });
+        }
+    }
+}
+
 export async function updateSubmissionStatus(
     localId: number,
     status: OfflineSubmission['status'],
@@ -601,7 +617,7 @@ export async function updateSubmissionStatus(
 export async function getPendingSubmissionCount(): Promise<number> {
     return db.offlineSubmissions
         .where('status')
-        .equals('pending')
+        .anyOf(['pending', 'syncing', 'failed'])
         .count();
 }
 

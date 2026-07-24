@@ -238,3 +238,22 @@ export async function verifyStoredPassword(password: string): Promise<boolean> {
     }
 }
 
+// ============ ROLE HELPERS ============
+
+/**
+ * Check if a role is a Lead or Program Manager role (restricted from opening/submitting assessments)
+ */
+export function isLeadOrPMRole(role?: string): boolean {
+    if (!role) return false;
+    const r = role.trim();
+    return ['Lead', 'Program Lead', 'Program Manager', 'PM', 'M&E', 'Admin'].includes(r);
+}
+
+/**
+ * Check if a role is a Teacher role (allowed to open and submit assessments)
+ */
+export function isTeacherRole(role?: string): boolean {
+    if (!role) return false;
+    return role.trim() === 'Teacher';
+}
+

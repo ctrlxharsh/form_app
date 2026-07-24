@@ -17,6 +17,7 @@ import {
   getAllCachedForms,
   getLastSchoolsSyncTime,
   getPendingSubmissions,
+  getAllUnsyncedSubmissions,
   type CachedAssessment,
   type CachedForm,
   type OfflineSubmission
@@ -31,7 +32,7 @@ import {
   checkActualConnectivity,
   type SyncStatus
 } from '@/lib/sync';
-import { getTeacherSession, logoutTeacher, type TeacherSession } from '@/lib/auth';
+import { getTeacherSession, logoutTeacher, isLeadOrPMRole, type TeacherSession } from '@/lib/auth';
 
 interface Assessment {
   assessment_id: number;
@@ -64,6 +65,9 @@ export default function HomePage() {
   const [selectedClass, setSelectedClass] = useState<number | 'all'>('all');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [teacherSession, setTeacherSession] = useState<TeacherSession | null>(null);
+  const [syncQueueExpanded, setSyncQueueExpanded] = useState(false);
+
+  const isLeadOrPM = isLeadOrPMRole(teacherSession?.role);
 
   // Prefetch and pre-cache HTML and RSC payloads for all cached forms when online
   useEffect(() => {
@@ -125,9 +129,9 @@ export default function HomePage() {
 
   // Load pending submissions
   const loadPendingSubmissions = useCallback(async () => {
-    const pending = await getPendingSubmissions();
-    setPendingSubmissions(pending);
-    setPendingCount(pending.length);
+    const unsynced = await getAllUnsyncedSubmissions();
+    setPendingSubmissions(unsynced);
+    setPendingCount(unsynced.length);
   }, []);
 
   // Load cached student count
@@ -424,31 +428,135 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Pending Submissions */}
-        {pendingCount > 0 && (
-          <div className="sidebar-section">
-            <h3>Pending Submissions</h3>
-            <div className="pending-submissions-list">
-              {pendingSubmissions.slice(0, 5).map((sub) => (
-                <div key={sub.localId} className="pending-submission-item">
-                  <div className="pending-sub-info">
-                    <span className="pending-sub-name">{sub.studentFirstName} {sub.studentLastName}</span>
-                    <span className={`pending-sub-status ${sub.status}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                      {sub.status === 'pending' && <><span className="material-symbols-rounded" style={{ fontSize: '12px' }}>schedule</span> Waiting</>}
-                      {sub.status === 'syncing' && <><span className="material-symbols-rounded" style={{ fontSize: '12px', animation: 'spin 1s linear infinite' }}>sync</span> Syncing</>}
-                      {sub.status === 'failed' && <><span className="material-symbols-rounded" style={{ fontSize: '12px' }}>error</span> Failed</>}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {pendingSubmissions.length > 5 && (
-                <span className="pending-more">
-                  +{pendingSubmissions.length - 5} more
+        {/* Sync Queue / Collapsible Pending Submissions */}
+        <div className="sidebar-section">
+          <button
+            onClick={() => setSyncQueueExpanded(!syncQueueExpanded)}
+            className="collapsible-sync-btn"
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 12px',
+              backgroundColor: 'var(--color-bg)',
+              border: '1.5px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '13px',
+              color: 'var(--color-primary)',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span
+                className="material-symbols-rounded"
+                style={{
+                  fontSize: '18px',
+                  color: pendingCount > 0 ? 'var(--color-warning)' : 'var(--color-text-secondary)',
+                  animation: syncStatus?.isSyncing ? 'spin 1s linear infinite' : 'none'
+                }}
+              >
+                {syncStatus?.isSyncing ? 'sync' : pendingCount > 0 ? 'cloud_queue' : 'cloud_done'}
+              </span>
+              <span>Sync Queue</span>
+              {pendingCount > 0 && (
+                <span
+                  style={{
+                    backgroundColor: pendingSubmissions.some(s => s.status === 'failed') ? '#fee2e2' : '#fef3c7',
+                    color: pendingSubmissions.some(s => s.status === 'failed') ? '#dc2626' : '#d97706',
+                    fontSize: '11px',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    fontWeight: 700
+                  }}
+                >
+                  {pendingCount}
                 </span>
               )}
             </div>
-          </div>
-        )}
+            <span
+              className="material-symbols-rounded"
+              style={{
+                fontSize: '18px',
+                transform: syncQueueExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease'
+              }}
+            >
+              expand_more
+            </span>
+          </button>
+
+          {syncQueueExpanded && (
+            <div className="sync-queue-collapsible-content" style={{ marginTop: '10px' }}>
+              {pendingSubmissions.length === 0 ? (
+                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', textAlign: 'center', padding: '12px 0' }}>
+                  All submissions synced! ✨
+                </div>
+              ) : (
+                <>
+                  <div className="pending-submissions-list" style={{ maxHeight: '220px', overflowY: 'auto', paddingRight: '4px' }}>
+                    {pendingSubmissions.map((sub) => (
+                      <div key={sub.localId} className="pending-submission-item" style={{ padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}>
+                        <div className="pending-sub-info" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span className="pending-sub-name" style={{ fontWeight: 600, fontSize: '13px' }}>
+                              {sub.studentFirstName} {sub.studentLastName}
+                            </span>
+                            <span className={`pending-sub-status ${sub.status}`} style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              {sub.status === 'pending' && <><span className="material-symbols-rounded" style={{ fontSize: '12px' }}>schedule</span> Waiting</>}
+                              {sub.status === 'syncing' && <><span className="material-symbols-rounded" style={{ fontSize: '12px', animation: 'spin 1s linear infinite' }}>sync</span> Syncing</>}
+                              {sub.status === 'failed' && <><span className="material-symbols-rounded" style={{ fontSize: '12px', color: 'var(--color-error)' }}>error</span> Failed</>}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                            {sub.assessmentTitle || `Assessment #${sub.formId}`} · Class {sub.classGrade}{sub.section}
+                          </span>
+                          {sub.errorMessage && (
+                            <span style={{ fontSize: '10px', color: 'var(--color-error)', marginTop: '2px', wordBreak: 'break-word' }}>
+                              {sub.errorMessage}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      const { retryFailedSubmissions } = await import('@/lib/sync');
+                      await retryFailedSubmissions();
+                      await loadPendingSubmissions();
+                    }}
+                    disabled={!online || syncStatus?.isSyncing}
+                    style={{
+                      width: '100%',
+                      marginTop: '10px',
+                      padding: '8px 12px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      backgroundColor: 'var(--color-primary)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: online && !syncStatus?.isSyncing ? 'pointer' : 'not-allowed',
+                      opacity: online && !syncStatus?.isSyncing ? 1 : 0.6,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>sync</span>
+                    {syncStatus?.isSyncing ? 'Syncing...' : 'Sync / Retry All'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
 
 
@@ -468,13 +576,17 @@ export default function HomePage() {
                 <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>edit_note</span>
                 Grading Dashboard
               </Link>
+              <Link href="/students" className="teacher-link" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>group</span>
+                Student Directory
+              </Link>
               <button
                 onClick={async () => {
                   await logoutTeacher();
                   setTeacherSession(null);
                 }}
                 className="logout-btn"
-                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}
               >
                 <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>logout</span>
                 Logout
@@ -571,6 +683,15 @@ export default function HomePage() {
                     <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>edit_note</span>
                     Grading Dashboard
                   </Link>
+                  <Link
+                    href="/students"
+                    className="mobile-cached-item"
+                    onClick={() => setMobileMenuOpen(false)}
+                    style={{ background: '#f0f4ff', color: '#4c6ef5', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}
+                  >
+                    <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>group</span>
+                    Student Directory
+                  </Link>
                   <button
                     onClick={async () => {
                       await logoutTeacher();
@@ -656,6 +777,67 @@ export default function HomePage() {
           </div>
         )}
 
+        {/* Lead / PM Notice Banner */}
+        {mounted && isLeadOrPM && (
+          <div className="lead-pm-notice-banner" style={{
+            backgroundColor: '#fffbeb',
+            border: '1.5px solid #fcd34d',
+            borderRadius: 'var(--radius-md)',
+            padding: '16px 20px',
+            marginBottom: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span className="material-symbols-rounded" style={{ fontSize: '28px', color: '#d97706' }}>info</span>
+              <div>
+                <strong style={{ color: '#92400e', fontSize: '15px', display: 'block' }}>
+                  Notice: Logged in as {teacherSession?.fullName} ({teacherSession?.role})
+                </strong>
+                <span style={{ color: '#b45309', fontSize: '13px' }}>
+                  Lead and Program Manager roles cannot open or submit assessments. Use the buttons below to access your dashboard flow.
+                </span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <Link href="/grading" style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 16px',
+                backgroundColor: 'var(--color-primary)',
+                color: 'white',
+                borderRadius: 'var(--radius-sm)',
+                fontWeight: 600,
+                fontSize: '13px',
+                textDecoration: 'none'
+              }}>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>edit_note</span>
+                Grading Dashboard
+              </Link>
+              <Link href="/students" style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 16px',
+                backgroundColor: 'white',
+                border: '1.5px solid var(--color-primary)',
+                color: 'var(--color-primary)',
+                borderRadius: 'var(--radius-sm)',
+                fontWeight: 600,
+                fontSize: '13px',
+                textDecoration: 'none'
+              }}>
+                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>group</span>
+                Student Directory
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* Offline Mode Banner */}
         {mounted && !online && !loading && (
           <div className="offline-banner">
@@ -704,6 +886,7 @@ export default function HomePage() {
                           group={group}
                           cachedFormIds={cachedFormIds}
                           isOffline={!online}
+                          isLeadOrPM={isLeadOrPM}
                         />
                       ))}
                     </div>
@@ -717,6 +900,7 @@ export default function HomePage() {
                     group={group}
                     cachedFormIds={cachedFormIds}
                     isOffline={!online}
+                    isLeadOrPM={isLeadOrPM}
                   />
                 ))}
               </div>
@@ -778,13 +962,37 @@ function groupAssessmentsByIdentifier(assessments: Assessment[]): AssessmentGrou
 function AssessmentGroupCard({
   group,
   cachedFormIds,
-  isOffline
+  isOffline,
+  isLeadOrPM
 }: {
   group: AssessmentGroup;
   cachedFormIds: Set<number>;
   isOffline: boolean;
+  isLeadOrPM: boolean;
 }) {
   const [showLanguages, setShowLanguages] = useState(false);
+
+  // If user is Lead or PM, render card as restricted
+  if (isLeadOrPM) {
+    return (
+      <div className="assessment-card disabled" style={{ opacity: 0.8, cursor: 'not-allowed' }}>
+        <div className="card-header">
+          <span className="card-class">Class {group.class_grade}</span>
+          <span className="card-lang-badge" style={{ fontSize: '10px', background: '#fee2e2', color: '#dc2626', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+            Restricted for Lead/PM
+          </span>
+        </div>
+        <h3 className="card-title">{group.title}</h3>
+        {group.description && <p className="card-desc">{group.description}</p>}
+        <div className="card-footer">
+          <span className="card-action" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#9ca3af', fontSize: '12px' }}>
+            <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>block</span>
+            Teacher Login Required to Submit
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   // Derive the list of all language variants for this assessment group.
   const variants: { assessment_id: number; language: string }[] = [];

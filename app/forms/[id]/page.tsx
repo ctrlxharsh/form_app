@@ -13,6 +13,7 @@ import { FormRenderer } from '@/components/FormRenderer';
 import { OfflineStatus } from '@/components/OfflineStatus';
 import { getCachedForm, type FormData } from '@/lib/db';
 import { initSyncListeners, isOnline, triggerSync, checkActualConnectivity } from '@/lib/sync';
+import { getTeacherSession, isLeadOrPMRole } from '@/lib/auth';
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -28,6 +29,7 @@ function FormPageContent({ params }: PageProps) {
     const [formData, setFormData] = useState<FormData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isRestricted, setIsRestricted] = useState(false);
     const [submissionResult, setSubmissionResult] = useState<{
         success: boolean;
         id: string | number;
@@ -91,6 +93,14 @@ function FormPageContent({ params }: PageProps) {
         async function loadForm() {
             setLoading(true);
             setError(null);
+
+            // Check role restriction: Lead & PM roles cannot open/submit assessments
+            const session = await getTeacherSession();
+            if (session && isLeadOrPMRole(session.role)) {
+                setIsRestricted(true);
+                setLoading(false);
+                return;
+            }
 
             const assessmentId = parseInt(id, 10);
             if (isNaN(assessmentId)) {
@@ -179,6 +189,34 @@ function FormPageContent({ params }: PageProps) {
                 <div className="loading-container">
                     <div className="loading-spinner" />
                     <p>Loading form...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Restricted role state (Lead & PM cannot open/submit assessments)
+    if (isRestricted) {
+        return (
+            <div className="page-container">
+                <OfflineStatus />
+                <div className="error-page" style={{ maxWidth: '520px', margin: '40px auto', padding: '32px 24px', textAlign: 'center' }}>
+                    <h1 className="flex items-center justify-center gap-2 text-warning" style={{ fontSize: '22px', fontWeight: 700, marginBottom: '16px' }}>
+                        <span className="material-symbols-rounded text-3xl" style={{ color: '#d97706' }}>block</span>
+                        Assessment Access Restricted
+                    </h1>
+                    <p className="error-message" style={{ fontSize: '15px', color: '#4b5563', lineHeight: 1.5, marginBottom: '24px' }}>
+                        Lead and Program Manager roles cannot open or submit assessments. Only Teacher accounts can open and submit assessments.
+                    </p>
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                        <button onClick={() => router.push('/grading')} className="submit-button primary flex items-center justify-center gap-2">
+                            <span className="material-symbols-rounded">edit_note</span>
+                            Go to Grading Dashboard
+                        </button>
+                        <button onClick={() => router.push('/')} className="back-button flex items-center justify-center gap-2">
+                            <span className="material-symbols-rounded">home</span>
+                            Home
+                        </button>
+                    </div>
                 </div>
             </div>
         );

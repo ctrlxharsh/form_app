@@ -498,6 +498,7 @@ export default function GradingPage() {
                     console.log(`[DEBUG] Successfully synced localId: ${localId}`);
                 } catch (e) {
                     console.error('[DEBUG] Failed to sync offline sub', localId, e);
+                    syncError = e instanceof Error ? e.message : `Failed to sync offline submission #${localId}`;
                 }
             }
 
