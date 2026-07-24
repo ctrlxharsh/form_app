@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
         const student = students[0];
 
         // Access check based on teacherId & role
-        if (role && ['Lead', 'Program Lead', 'Program Manager', 'PM', 'M&E', 'Admin'].includes(role.trim())) {
+        if (role && ['Lead', 'Program Lead', 'Program Manager', 'PM', 'M&E'].includes(role.trim())) {
             return NextResponse.json({ error: 'Lead and Program Manager roles cannot start assessment logins. Please login with a Teacher ID.' }, { status: 403 });
         }
 

@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
             `;
             if (teacherRes.length > 0) {
                 const roleName = teacherRes[0].role_name;
-                if (roleName && ['Lead', 'Program Lead', 'Program Manager', 'PM', 'M&E', 'Admin'].includes(roleName.trim())) {
+                if (roleName && ['Lead', 'Program Lead', 'Program Manager', 'PM', 'M&E'].includes(roleName.trim())) {
                     return NextResponse.json(
                         { error: 'Lead and Program Manager roles are not permitted to submit assessments. Please log in with a Teacher account.' },
                         { status: 403 }

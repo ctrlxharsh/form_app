@@ -246,7 +246,7 @@ export async function verifyStoredPassword(password: string): Promise<boolean> {
 export function isLeadOrPMRole(role?: string): boolean {
     if (!role) return false;
     const r = role.trim();
-    return ['Lead', 'Program Lead', 'Program Manager', 'PM', 'M&E', 'Admin'].includes(r);
+    return ['Lead', 'Program Lead', 'Program Manager', 'PM', 'M&E'].includes(r);
 }
 
 /**
