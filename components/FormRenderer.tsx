@@ -22,6 +22,7 @@ import {
     queueImageForUpload
 } from '@/lib/db';
 import { isOnline, checkActualConnectivity } from '@/lib/sync';
+import { detectScriptDirection } from '@/lib/scriptUtils';
 
 interface FormRendererProps {
     formData: FormData;
@@ -475,18 +476,26 @@ export function FormRenderer({ formData, rawFormData, selectedLanguage, onComple
                 </div>
 
                 {/* Section Header */}
-                <div className="section-header">
-                    <h2 className="section-title" dir="auto">{currentSection.section_title}</h2>
-                    <span className="section-progress">
-                        {progress.answered}/{progress.total} answered
-                    </span>
-                </div>
+                {(() => {
+                    const secTitleDir = detectScriptDirection(currentSection.section_title);
+                    const secInstrDir = detectScriptDirection(currentSection.section_instructions);
+                    return (
+                        <>
+                            <div className="section-header" dir={secTitleDir}>
+                                <h2 className="section-title" dir={secTitleDir}>{currentSection.section_title}</h2>
+                                <span className="section-progress">
+                                    {progress.answered}/{progress.total} answered
+                                </span>
+                            </div>
 
-                {currentSection.section_instructions && (
-                    <div className="section-instructions" dir="auto">
-                        <p style={{ whiteSpace: 'pre-wrap' }}>{currentSection.section_instructions}</p>
-                    </div>
-                )}
+                            {currentSection.section_instructions && (
+                                <div className="section-instructions" dir={secInstrDir}>
+                                    <p style={{ whiteSpace: 'pre-wrap' }} dir={secInstrDir}>{currentSection.section_instructions}</p>
+                                </div>
+                            )}
+                        </>
+                    );
+                })()}
 
                 {/* Section Error Banner */}
                 {error && (

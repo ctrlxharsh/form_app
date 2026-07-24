@@ -33,16 +33,17 @@ export function QuestionInput({ question, value, onChange, questionNumber }: Que
     const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
     const requiredMarker = question.is_required ? ' *' : '';
     const marks = question.marks ? ` [${question.marks} marks]` : '';
+    const qDir = detectScriptDirection(question.question_text);
 
     // Check if options have images
     const hasOptionImages = question.options.some(opt => opt.option_image_url);
 
     return (
-        <div className="question-container">
+        <div className="question-container" dir={qDir}>
             {/* Question Header */}
-            <div className="question-header">
+            <div className="question-header" dir={qDir}>
                 <span className="question-number">Q{questionNumber}.</span>
-                <span className="question-text" dir="auto" style={{ whiteSpace: 'pre-wrap' }}>{question.question_text}{requiredMarker}</span>
+                <span className="question-text" dir={qDir} style={{ whiteSpace: 'pre-wrap' }}>{question.question_text}{requiredMarker}</span>
                 {marks && <span className="question-marks">{marks}</span>}
             </div>
 
