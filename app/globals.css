@@ -1990,46 +1990,35 @@ body {
 [dir="rtl"],
 input[dir="rtl"],
 textarea[dir="rtl"],
-.question-container[dir="rtl"],
-.question-header[dir="rtl"],
-.section-header[dir="rtl"],
+.question-text[dir="rtl"],
+.section-title[dir="rtl"],
 .section-instructions[dir="rtl"],
-.option-card[dir="rtl"],
+.option-text[dir="rtl"],
 .rtl-text {
   direction: rtl !important;
   text-align: right !important;
+  unicode-bidi: plaintext;
   font-family: system-ui, -apple-system, 'Noto Nastaliq Urdu', 'Segoe UI', Roboto, sans-serif;
 }
 
-[dir="rtl"] .question-header {
-  display: block;
-  text-align: right !important;
-}
-
-[dir="rtl"] .question-number {
-  margin-left: 8px;
-  margin-right: 0;
-  display: inline-block;
-  direction: ltr;
-}
-
-[dir="rtl"] .question-marks {
-  margin-right: 8px;
-  margin-left: 0;
-  display: inline-block;
-}
-
-[dir="rtl"] .option-card {
+.option-card[dir="rtl"] {
   flex-direction: row-reverse;
   text-align: right !important;
+}
+
+.option-card[dir="ltr"] {
+  flex-direction: row;
+  text-align: left !important;
 }
 
 [dir="ltr"],
 input[dir="ltr"],
 textarea[dir="ltr"],
+.option-text[dir="ltr"],
 .ltr-text {
   direction: ltr !important;
   text-align: left !important;
+  unicode-bidi: plaintext;
 }
 
 [dir="auto"] {

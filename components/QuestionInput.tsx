@@ -203,39 +203,43 @@ function MCQInput({
         <div className="input-group">
             <p className="input-label">Select one:</p>
             <div className={`options-container ${hasImages ? 'with-images' : ''}`}>
-                {options.map((opt, idx) => (
-                    <label
-                        key={opt.option_id}
-                        className={`option-card ${value === opt.option_id ? 'selected' : ''}`}
-                    >
-                        <div className="option-header">
-                            <input
-                                type="radio"
-                                name={`mcq-${options[0].option_id}`}
-                                checked={value === opt.option_id}
-                                onChange={() => onChange(opt.option_id)}
-                                className="radio-input"
-                            />
-                            <span className="option-letter">{String.fromCharCode(65 + idx)}</span>
-                        </div>
-                        {opt.option_image_url && (
-                            <OfflineImage 
-                                src={opt.option_image_url} 
-                                alt={opt.option_text} 
-                                className="option-image" 
-                                style={{ cursor: 'zoom-in' }}
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    onImageClick(opt.option_image_url!);
-                                }}
-                            />
-                        )}
-                        {opt.option_text && (
-                            <span className="option-text" dir="auto" style={{ whiteSpace: 'pre-wrap' }}>{opt.option_text}</span>
-                        )}
-                    </label>
-                ))}
+                {options.map((opt, idx) => {
+                    const optDir = detectScriptDirection(opt.option_text);
+                    return (
+                        <label
+                            key={opt.option_id}
+                            className={`option-card ${value === opt.option_id ? 'selected' : ''}`}
+                            dir={optDir}
+                        >
+                            <div className="option-header">
+                                <input
+                                    type="radio"
+                                    name={`mcq-${options[0].option_id}`}
+                                    checked={value === opt.option_id}
+                                    onChange={() => onChange(opt.option_id)}
+                                    className="radio-input"
+                                />
+                                <span className="option-letter">{String.fromCharCode(65 + idx)}</span>
+                            </div>
+                            {opt.option_image_url && (
+                                <OfflineImage 
+                                    src={opt.option_image_url} 
+                                    alt={opt.option_text} 
+                                    className="option-image" 
+                                    style={{ cursor: 'zoom-in' }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onImageClick(opt.option_image_url!);
+                                    }}
+                                />
+                            )}
+                            {opt.option_text && (
+                                <span className="option-text" dir={optDir} style={{ whiteSpace: 'pre-wrap', unicodeBidi: 'plaintext' }}>{opt.option_text}</span>
+                            )}
+                        </label>
+                    );
+                })}
             </div>
         </div>
     );
@@ -268,38 +272,42 @@ function MultipleSelectInput({
         <div className="input-group">
             <p className="input-label">Select all that apply:</p>
             <div className={`options-container ${hasImages ? 'with-images' : ''}`}>
-                {options.map((opt, idx) => (
-                    <label
-                        key={opt.option_id}
-                        className={`option-card ${value.includes(opt.option_id) ? 'selected' : ''}`}
-                    >
-                        <div className="option-header">
-                            <input
-                                type="checkbox"
-                                checked={value.includes(opt.option_id)}
-                                onChange={() => toggleOption(opt.option_id)}
-                                className="checkbox-input"
-                            />
-                            <span className="option-letter">{String.fromCharCode(65 + idx)}</span>
-                        </div>
-                        {opt.option_image_url && (
-                            <OfflineImage 
-                                src={opt.option_image_url} 
-                                alt={opt.option_text} 
-                                className="option-image" 
-                                style={{ cursor: 'zoom-in' }}
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    onImageClick(opt.option_image_url!);
-                                }}
-                            />
-                        )}
-                        {opt.option_text && (
-                            <span className="option-text" dir="auto" style={{ whiteSpace: 'pre-wrap' }}>{opt.option_text}</span>
-                        )}
-                    </label>
-                ))}
+                {options.map((opt, idx) => {
+                    const optDir = detectScriptDirection(opt.option_text);
+                    return (
+                        <label
+                            key={opt.option_id}
+                            className={`option-card ${value.includes(opt.option_id) ? 'selected' : ''}`}
+                            dir={optDir}
+                        >
+                            <div className="option-header">
+                                <input
+                                    type="checkbox"
+                                    checked={value.includes(opt.option_id)}
+                                    onChange={() => toggleOption(opt.option_id)}
+                                    className="checkbox-input"
+                                />
+                                <span className="option-letter">{String.fromCharCode(65 + idx)}</span>
+                            </div>
+                            {opt.option_image_url && (
+                                <OfflineImage 
+                                    src={opt.option_image_url} 
+                                    alt={opt.option_text} 
+                                    className="option-image" 
+                                    style={{ cursor: 'zoom-in' }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onImageClick(opt.option_image_url!);
+                                    }}
+                                />
+                            )}
+                            {opt.option_text && (
+                                <span className="option-text" dir={optDir} style={{ whiteSpace: 'pre-wrap', unicodeBidi: 'plaintext' }}>{opt.option_text}</span>
+                            )}
+                        </label>
+                    );
+                })}
             </div>
         </div>
     );
